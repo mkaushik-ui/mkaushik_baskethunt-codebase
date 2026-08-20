@@ -1,0 +1,32 @@
+# Legacy SAML paths under /soi-central/saml/ — preserve ACS POST body
+<IfModule mod_dir.c>
+DirectorySlash Off
+</IfModule>
+
+<Files "acs">
+    <IfModule LiteSpeed>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php7.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php8.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    ForceType application/x-httpd-php
+</Files>
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^acs$ acs.php [L,QSA]
+RewriteRule ^acs/$ acs.php [L,QSA]
+RewriteRule ^login$ login/index.php [L,QSA]
+RewriteRule ^login/$ login/index.php [L,QSA]
+RewriteRule ^metadata$ metadata/index.php [L,QSA]
+RewriteRule ^metadata/$ metadata/index.php [L,QSA]
+RewriteRule ^logout$ logout/index.php [L,QSA]
+RewriteRule ^logout/$ logout/index.php [L,QSA]
+</IfModule>

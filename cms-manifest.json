@@ -1,0 +1,10 @@
+{
+  "id": "soi-source-cms-clean-installable",
+  "name": "SOI Source CMS",
+  "version": "1.1.0",
+  "type": "distribution",
+  "description": "SOI Source CMS v1.1.0. Complete Enterprise Authoring Suite release. Fullscreen standalone workspace, enterprise ribbon tabs, multi-tab sidebars (Components, Navigator, Patterns, Reusable, Document, Block, Layout), Command Palette, API Endpoint, Key/Value reference, Keyboard keys, Reusable blocks, Revisions history with snapshot restore, Document starter templates, pre-built patterns, and optimistic concurrency protection.",
+  "min_php": "8.0",
+  "installer": "install/index.php",
+  "cms_version": "1.1.0"
+}

@@ -1,0 +1,7 @@
+{
+  "version": "1.0.8",
+  "name": "Editor Host Runtime Recovery",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Recovers the 1.0.7 authoring workspace into a true 100vw x 100vh standalone host without CMS chrome overlap, populates the component library server-side with instant JavaScript progressive enhancement, wires whitespace click-to-focus on document canvas, provides comprehensive lifecycle diagnostics, and guarantees stable Editor.js 2.30.8 runtime execution."
+}

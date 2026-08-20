@@ -1,0 +1,7 @@
+{
+  "version": "1.0.7",
+  "name": "Fullscreen Editor Runtime & Components",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Repairs the 1.0.6 authoring runtime so Editor.js typing and controls work, makes authoring truly fullscreen, and adds enterprise Knowledge Center components (Steps, Accordion, FAQ, Tabs, Code Group, Definition List, Status Badge, Group, Columns, Cards) with validation, renderer, and cache-busted assets."
+}

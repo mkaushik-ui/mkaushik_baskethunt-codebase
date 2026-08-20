@@ -1,0 +1,12 @@
+# Block direct HTTP access to installer logic (must be included via index.php only).
+<IfModule mod_authz_core.c>
+    <Files "install.php">
+        Require all denied
+    </Files>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <Files "install.php">
+        Order allow,deny
+        Deny from all
+    </Files>
+</IfModule>

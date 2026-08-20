@@ -1,0 +1,37 @@
+# SAML routes under /saml/ — preserve POST to ACS (no external redirect)
+# DirectorySlash Off must be HERE (parent of any ACS path), not only inside a child folder.
+<IfModule mod_dir.c>
+DirectorySlash Off
+</IfModule>
+
+# Extensionless ACS file as PHP (primary anti-redirect strategy)
+<Files "acs">
+    <IfModule LiteSpeed>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php7.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    <IfModule mod_php8.c>
+        SetHandler application/x-httpd-php
+    </IfModule>
+    ForceType application/x-httpd-php
+</Files>
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# Internal rewrites only — never use [R] / [R=301] / [R=302] on ACS
+RewriteRule ^acs$ acs.php [L,QSA]
+RewriteRule ^acs/$ acs.php [L,QSA]
+RewriteRule ^login$ login/index.php [L,QSA]
+RewriteRule ^login/$ login/index.php [L,QSA]
+RewriteRule ^metadata$ metadata/index.php [L,QSA]
+RewriteRule ^metadata/$ metadata/index.php [L,QSA]
+RewriteRule ^logout$ logout/index.php [L,QSA]
+RewriteRule ^logout/$ logout/index.php [L,QSA]
+RewriteRule ^slo$ slo/index.php [L,QSA]
+RewriteRule ^slo/$ slo/index.php [L,QSA]
+</IfModule>

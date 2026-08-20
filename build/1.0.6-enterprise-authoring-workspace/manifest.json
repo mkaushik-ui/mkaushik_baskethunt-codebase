@@ -1,0 +1,7 @@
+{
+  "version": "1.0.6",
+  "name": "Enterprise Authoring Workspace",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Transforms the 1.0.5 structured Editor.js editor into a premium Knowledge Center authoring workspace: immersive layout, Word-like ribbon, component library, outline, inspector, block chrome, and status bar. Document model, renderer, and save APIs are unchanged."
+}

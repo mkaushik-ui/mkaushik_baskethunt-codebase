@@ -1,0 +1,7 @@
+{
+  "version": "1.1.0",
+  "name": "Complete Enterprise Authoring Suite",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Complete Enterprise Authoring Suite release. Fullscreen standalone workspace, enterprise ribbon tabs, multi-tab sidebars (Components, Navigator, Patterns, Reusable, Document, Block, Layout), Command Palette, API Endpoint, Key/Value reference, Keyboard keys, Reusable blocks, Revisions history with snapshot restore, Document starter templates, pre-built patterns, and optimistic concurrency protection."
+}

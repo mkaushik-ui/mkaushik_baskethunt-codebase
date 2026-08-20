@@ -1,0 +1,12 @@
+<?php
+/**
+ * Extensionless physical path: /soi-central/saml/acs
+ * Prevents DirectorySlash POST body loss on ACS.
+ */
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/_bootstrap.php';
+
+use SOI\Core\SoiCentralAuth;
+
+SoiCentralAuth::processSamlAcsRequest();

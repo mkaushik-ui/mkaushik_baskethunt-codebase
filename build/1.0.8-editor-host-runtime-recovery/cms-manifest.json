@@ -1,0 +1,10 @@
+{
+  "id": "soi-source-cms-clean-installable",
+  "name": "SOI Source CMS",
+  "version": "1.0.8",
+  "type": "distribution",
+  "description": "SOI Source CMS v1.0.8. Editor Host Runtime Recovery release. Hardened 100vw x 100vh fullscreen authoring host without CMS chrome overlap, server-rendered component catalog with instant JavaScript enhancement, canvas whitespace focus, robust lifecycle diagnostics, and Editor.js 2.30.8 stable runtime.",
+  "min_php": "8.0",
+  "installer": "install/index.php",
+  "cms_version": "1.0.8"
+}

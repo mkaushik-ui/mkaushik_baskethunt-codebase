@@ -1,0 +1,27 @@
+# SOI Central — route clean URLs to PHP handlers (backup when root rewrite is absent)
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /soi-central/
+
+# SAML endpoints — internal rewrite only; never use [R] or [R=301] here (POST→GET).
+RewriteRule ^saml/acs/?$ saml/acs/index.php [L,QSA]
+RewriteRule ^saml/login/?$ saml/login/index.php [L,QSA]
+RewriteRule ^saml/metadata/?$ saml/metadata/index.php [L,QSA]
+RewriteRule ^logout/?$ logout/index.php [L,QSA]
+RewriteRule ^denied/?$ denied/index.php [L,QSA]
+RewriteRule ^manifest\.json$ manifest/index.php [L]
+RewriteRule ^webhook/?$ webhook/index.php [L,QSA]
+RewriteRule ^health/?$ health/index.php [L,QSA]
+RewriteRule ^session/status/?$ session/status/index.php [L,QSA]
+RewriteRule ^session/live-check/?$ session/live-check/index.php [L,QSA]
+RewriteRule ^session/sync\.js$ session/sync/index.php [L]
+</IfModule>
+
+# Belt-and-suspenders: disable trailing-slash redirect for SAML subdirectories
+<IfModule mod_dir.c>
+DirectorySlash Off
+</IfModule>
+
+<IfModule mod_negotiation.c>
+Options -MultiViews
+</IfModule>

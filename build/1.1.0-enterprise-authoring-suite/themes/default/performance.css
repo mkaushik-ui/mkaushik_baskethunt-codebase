@@ -1,0 +1,100 @@
+/**
+ * SOI CMS frontend performance — skeleton + progressive media (v1.2.10.1)
+ * Scoped classes only; degrades cleanly without JS.
+ */
+
+/* Skeleton shimmer */
+.soi-skel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #e8edf5 0%, #f5f7fb 45%, #e8edf5 100%);
+  background-size: 200% 100%;
+  animation: soi-skel-shine 1.2s ease-in-out infinite;
+  border-radius: var(--radius, 10px);
+}
+
+@keyframes soi-skel-shine {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .soi-skel { animation: none; background: #e8edf5; }
+}
+
+/* Media frame with optional skeleton underlay */
+.soi-media-frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #eef2f7;
+}
+
+.soi-media-frame > img,
+.soi-media-frame > .soi-perf-media {
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.soi-media-frame.is-loading > img,
+.soi-media-frame.is-loading > .soi-perf-media {
+  opacity: 0.01; /* keep layout/accessible; skeleton shows behind */
+}
+
+.soi-media-frame > .soi-skel-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.soi-media-frame > img,
+.soi-media-frame > .soi-perf-media {
+  position: relative;
+  z-index: 1;
+}
+
+.soi-media-frame.is-loaded > .soi-skel-layer,
+.soi-media-frame.is-error > .soi-skel-layer {
+  display: none;
+}
+
+.soi-media-frame.is-loaded > img,
+.soi-media-frame.is-loaded > .soi-perf-media {
+  opacity: 1;
+}
+
+/* Card skeleton / progressive reveal */
+.soi-defer-block {
+  content-visibility: auto;
+  contain-intrinsic-size: 280px;
+}
+
+.posts-grid .post-card.soi-defer-block {
+  min-height: 0;
+}
+
+.post-card-image.soi-perf-media,
+.entry-content img.soi-perf-media {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Below-the-fold soft fade when JS progressive mode is active */
+html.soi-perf-js .soi-defer-block.is-pending {
+  opacity: 0.92;
+}
+
+html.soi-perf-js .soi-defer-block.is-visible {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+/* No permanent hide without JS */
+html:not(.soi-perf-js) .soi-defer-block,
+html:not(.soi-perf-js) .soi-media-frame > img {
+  opacity: 1 !important;
+}

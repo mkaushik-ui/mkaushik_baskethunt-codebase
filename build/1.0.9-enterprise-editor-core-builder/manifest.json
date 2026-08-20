@@ -1,0 +1,7 @@
+{
+  "version": "1.0.9",
+  "name": "Enterprise Editor Core Builder",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Transforms authoring into an enterprise core block-building environment with collapsible left Components and right Settings/Inspector panels, local preference persistence, distraction-free canvas mode, 2-column visual component tile grid, live keyword filtering, rich ribbon toolbar, refined document surface typography, enhanced Callout semantic tones, and safe legacy preview/editor switcher."
+}

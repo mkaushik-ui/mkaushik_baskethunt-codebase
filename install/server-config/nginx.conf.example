@@ -1,0 +1,29 @@
+# Adapt server_name, root, and the PHP-FPM socket for your server.
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+    root /path/to/soi-cms;
+    index index.php;
+
+    location ^~ /config/ { deny all; }
+    location ^~ /uploads/ { deny all; }
+    location ^~ /updates/ { deny all; }
+
+    location ~ ^/(?:soi-central/)?saml/(?:acs|login|metadata|slo|logout)/?$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_param SCRIPT_NAME /index.php;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        try_files $uri =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+    }
+}

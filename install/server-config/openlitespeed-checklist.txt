@@ -1,0 +1,14 @@
+OpenLiteSpeed fresh-install checklist
+=====================================
+
+1. Set the virtual-host document root to the directory containing index.php.
+2. Enable rewrite rules and Auto Load from .htaccess for the virtual host.
+3. Confirm PHP runs through the intended external application/PHP handler.
+4. Confirm directories are traversable (0755) and static files are readable
+   (0644) by the LiteSpeed worker.
+5. Add virtual-host deny contexts for /config/, /uploads/, and /updates/ when
+   server policy does not honor Apache authorization directives.
+6. Verify the four CSS/JS/SVG URLs listed in WEB_INSTALLATION_README.txt return
+   HTTP 200 with correct MIME types.
+7. Verify /config/, /uploads/, and /updates/ return HTTP 403 or 404.
+8. Verify /saml/metadata reaches index.php without a directory redirect.

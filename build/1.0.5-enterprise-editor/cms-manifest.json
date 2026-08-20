@@ -1,0 +1,10 @@
+{
+  "id": "soi-source-cms-clean-installable",
+  "name": "SOI Source CMS",
+  "version": "1.0.5",
+  "type": "distribution",
+  "description": "SOI Source CMS v1.0.5. Enterprise structured block editor foundation. Universal Files Service identity (no hardcoded app_id/domain). SAML ACS POST-safe. Includes Admin, Update Center, Media, Files Connector, CMS Readiness. No site-specific credentials.",
+  "min_php": "8.0",
+  "installer": "install/index.php",
+  "cms_version": "1.0.5"
+}

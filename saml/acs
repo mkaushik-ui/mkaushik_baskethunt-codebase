@@ -1,0 +1,13 @@
+<?php
+/**
+ * Extensionless physical path: /saml/acs
+ * Avoids DirectorySlash redirect that drops SAML POST bodies.
+ * Handler type forced via saml/.htaccess (ForceType / SetHandler).
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/_bootstrap.php';
+
+use SOI\Core\SoiCentralAuth;
+
+SoiCentralAuth::processSamlAcsRequest();

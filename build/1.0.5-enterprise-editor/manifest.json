@@ -1,0 +1,7 @@
+{
+  "version": "1.0.5",
+  "name": "Enterprise Structured Editor",
+  "type": "core",
+  "min_php": "8.0",
+  "description": "Replaces TinyMCE with the SOI Knowledge Center structured block editor. Adds canonical body_json documents, server-side validation/rendering, slash commands, and legacy HTML compatibility."
+}

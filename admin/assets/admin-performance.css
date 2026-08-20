@@ -1,0 +1,69 @@
+/**
+ * Admin performance helpers — Media Library skeletons (v1.2.10.1)
+ * Scoped to media library page classes.
+ */
+
+.media-library .ml-card-thumb {
+  position: relative;
+  background: #eef2f7;
+}
+
+.media-library .ml-card-thumb .ml-skel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(90deg, #e8edf5 0%, #f5f7fb 45%, #e8edf5 100%);
+  background-size: 200% 100%;
+  animation: ml-skel-shine 1.15s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ml-skel-shine {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-library .ml-card-thumb .ml-skel { animation: none; background: #e8edf5; }
+}
+
+.media-library .ml-card-thumb.is-thumb-loading .ml-thumb-image {
+  opacity: 0.05;
+}
+
+.media-library .ml-card-thumb.is-thumb-loaded .ml-skel,
+.media-library .ml-card-thumb.is-thumb-error .ml-skel {
+  display: none;
+}
+
+.media-library .ml-card-thumb.is-thumb-loaded .ml-thumb-image {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.media-library .ml-thumb-image {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Performance checklist card */
+.perf-check-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.perf-check-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.perf-check-ok { color: #15803d; font-weight: 600; }
+.perf-check-note { color: #64748b; }
