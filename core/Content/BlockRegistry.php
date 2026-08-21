@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace SOI\Core\Content;
 
+use SOI\Core\Content\Contracts\BlockProviderInterface;
 use SOI\Core\Content\Blocks\AccordionBlock;
 use SOI\Core\Content\Blocks\ApiEndpointBlock;
 use SOI\Core\Content\Blocks\CalloutBlock;
@@ -33,12 +34,12 @@ use SOI\Core\Content\Blocks\UnknownBlock;
 use SOI\Core\Hook;
 
 /**
- * Extensible block/tool registry (1.1.0).
+ * Modular block/tool registry and provider aggregator.
  * Single source of truth for Editor.js tools, component library, patterns, and slash menu.
  */
 final class BlockRegistry
 {
-    /** @var array<string, BlockType> */
+    /** @var array<string, BlockType|BlockProviderInterface> */
     private static array $types = [];
 
     private static bool $booted = false;
@@ -50,41 +51,31 @@ final class BlockRegistry
         }
         self::$booted = true;
 
-        self::register(new ParagraphBlock());
-        self::register(new HeadingBlock());
-        self::register(new ListBlock());
-        self::register(new QuoteBlock());
-        self::register(new DividerBlock());
-        self::register(new ImageBlock());
-        self::register(new LinkBlock());
-        self::register(new TableBlock());
-        self::register(new CodeBlock());
-        self::register(new CalloutBlock());
-        self::register(new FileBlock());
-        self::register(new StepsBlock());
-        self::register(new AccordionBlock());
-        self::register(new FaqBlock());
-        self::register(new TabsBlock());
-        self::register(new CodeGroupBlock());
-        self::register(new DefinitionListBlock());
-        self::register(new StatusBadgeBlock());
-        self::register(new GroupBlock());
-        self::register(new ColumnsBlock());
-        self::register(new CardsBlock());
-        self::register(new ApiEndpointBlock());
-        self::register(new KeyValuesBlock());
-        self::register(new KbdBlock());
-        self::register(new ReusableBlock());
-        self::register(new LegacyBlock());
+        // Register default baseline built-in blocks
+        self::registerBuiltinDefaults();
+
+        // Auto-discover modular block provider classes in core/Content/Blocks/ subdirectories
+        self::discoverProviders(__DIR__ . '/Blocks');
 
         if (class_exists(Hook::class)) {
             Hook::doAction('soi_register_editor_blocks', self::class);
         }
     }
 
-    public static function register(BlockType $block): void
+    /**
+     * Register a block type implementing BlockType or BlockProviderInterface.
+     */
+    public static function register(BlockType|BlockProviderInterface $block): void
     {
         self::$types[$block->type()] = $block;
+    }
+
+    /**
+     * Alias for registering modular block provider.
+     */
+    public static function registerProvider(BlockProviderInterface $provider): void
+    {
+        self::register($provider);
     }
 
     public static function has(string $type): bool
@@ -93,14 +84,14 @@ final class BlockRegistry
         return isset(self::$types[$type]);
     }
 
-    public static function get(string $type): BlockType
+    public static function get(string $type): BlockType|BlockProviderInterface
     {
         self::boot();
         return self::$types[$type] ?? new UnknownBlock($type);
     }
 
     /**
-     * @return array<string, BlockType>
+     * @return array<string, BlockType|BlockProviderInterface>
      */
     public static function all(): array
     {
@@ -109,7 +100,7 @@ final class BlockRegistry
     }
 
     /**
-     * Catalog for the editor UI (slash menu, component library, tests).
+     * Catalog for the editor UI (slash menu, component library, inspector, tests).
      *
      * @return list<array<string, mixed>>
      */
@@ -223,6 +214,78 @@ final class BlockRegistry
         }
 
         return $items;
+    }
+
+    /**
+     * Register default built-in block types.
+     */
+    private static function registerBuiltinDefaults(): void
+    {
+        self::register(new ParagraphBlock());
+        self::register(new HeadingBlock());
+        self::register(new ListBlock());
+        self::register(new QuoteBlock());
+        self::register(new DividerBlock());
+        self::register(new ImageBlock());
+        self::register(new LinkBlock());
+        self::register(new TableBlock());
+        self::register(new CodeBlock());
+        self::register(new CalloutBlock());
+        self::register(new FileBlock());
+        self::register(new StepsBlock());
+        self::register(new AccordionBlock());
+        self::register(new FaqBlock());
+        self::register(new TabsBlock());
+        self::register(new CodeGroupBlock());
+        self::register(new DefinitionListBlock());
+        self::register(new StatusBadgeBlock());
+        self::register(new GroupBlock());
+        self::register(new ColumnsBlock());
+        self::register(new CardsBlock());
+        self::register(new ApiEndpointBlock());
+        self::register(new KeyValuesBlock());
+        self::register(new KbdBlock());
+        self::register(new ReusableBlock());
+        self::register(new LegacyBlock());
+    }
+
+    /**
+     * Auto-discover block provider classes in subdirectories.
+     */
+    private static function discoverProviders(string $directory): void
+    {
+        if (!is_dir($directory)) {
+            return;
+        }
+
+        $subdirs = glob($directory . '/*', GLOB_ONLYDIR);
+        if (!$subdirs) {
+            return;
+        }
+
+        foreach ($subdirs as $subdir) {
+            $files = glob($subdir . '/*Block.php');
+            if (!$files) {
+                continue;
+            }
+            $subNamespace = basename($subdir);
+            foreach ($files as $file) {
+                $className = basename($file, '.php');
+                $fqcn = "SOI\\Core\\Content\\Blocks\\{$subNamespace}\\{$className}";
+                if (class_exists($fqcn) && !isset(self::$types[strtolower($className)])) {
+                    try {
+                        $ref = new \ReflectionClass($fqcn);
+                        if (!$ref->isAbstract() && ($ref->implementsInterface(BlockProviderInterface::class) || $ref->implementsInterface(BlockType::class))) {
+                            /** @var BlockType|BlockProviderInterface $instance */
+                            $instance = new $fqcn();
+                            self::register($instance);
+                        }
+                    } catch (\Throwable $e) {
+                        // Safe skip on instantiation failure
+                    }
+                }
+            }
+        }
     }
 
     /**

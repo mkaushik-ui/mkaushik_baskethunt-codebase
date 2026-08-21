@@ -8,6 +8,53 @@ use SOI\Core\Content\Html;
 
 abstract class AbstractBlock implements BlockType
 {
+    public function category(): string
+    {
+        return 'basic';
+    }
+
+    public function keywords(): string
+    {
+        return $this->type() . ' ' . $this->label();
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function capabilities(): array
+    {
+        return [
+            'nestable' => false,
+            'reusable' => true,
+            'wide' => false,
+            'interactive' => false,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function allowedParents(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function inspectorSchema(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function defaultData(): array
+    {
+        return [];
+    }
+
     public function validate(array $data): array
     {
         return [];

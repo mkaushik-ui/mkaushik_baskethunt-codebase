@@ -3,13 +3,18 @@ declare(strict_types=1);
 
 namespace SOI\Core\Content;
 
+use SOI\Core\Content\Contracts\RendererInterface;
+
 /**
- * Server-side renderer. Independent of the editor DOM.
+ * Canonical server-side document renderer and block dispatcher.
+ * Independent of the client-side Editor.js DOM.
  */
-final class DocumentRenderer
+final class DocumentRenderer implements RendererInterface
 {
     /**
      * Render a pages/posts record using structured data when present.
+     *
+     * @param array<string, mixed> $record
      */
     public static function renderRecord(array $record, bool $preview = false): string
     {
@@ -26,6 +31,8 @@ final class DocumentRenderer
     }
 
     /**
+     * Render a full canonical document structure into semantic HTML.
+     *
      * @param array{schemaVersion?:int,blocks:list<array{id:string,type:string,data:array<string,mixed>}>} $document
      */
     public static function render(array $document, bool $preview = false): string
@@ -33,6 +40,7 @@ final class DocumentRenderer
         $ctx = new RenderContext();
         $ctx->preview = $preview;
         $html = [];
+
         foreach ($document['blocks'] ?? [] as $block) {
             if (!is_array($block)) {
                 continue;
@@ -52,7 +60,7 @@ final class DocumentRenderer
     }
 
     /**
-     * Headings collected during a render pass — used for future On this page.
+     * Headings collected during a render pass — used for Table of Contents (On this page).
      *
      * @param array{schemaVersion?:int,blocks:list<array{id:string,type:string,data:array<string,mixed>}>} $document
      * @return list<array{id:string,level:int,text:string}>
@@ -71,5 +79,17 @@ final class DocumentRenderer
             ], $ctx);
         }
         return $ctx->headings;
+    }
+
+    /**
+     * Implements RendererInterface for single block rendering.
+     *
+     * @param array{id:string,type:string,data:array<string,mixed>} $block
+     */
+    public function render(array $block, RenderContext $ctx): string
+    {
+        $type = (string) ($block['type'] ?? '');
+        $handler = BlockRegistry::get($type);
+        return $handler->render($block, $ctx);
     }
 }
