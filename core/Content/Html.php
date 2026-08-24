@@ -34,6 +34,13 @@ final class Html
         return trim($text);
     }
 
+    public static function slug(string $text): string
+    {
+        $plain = strtolower(self::plainText($text));
+        $clean = preg_replace('/[^a-z0-9\-_]+/i', '-', $plain) ?? '';
+        return trim($clean, '-');
+    }
+
     public static function sanitizeInline(string $html, int $maxLength = 50000): string
     {
         return self::sanitizeFragment($html, self::INLINE_TAGS, $maxLength);

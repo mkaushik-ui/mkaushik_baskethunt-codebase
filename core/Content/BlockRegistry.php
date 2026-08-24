@@ -272,13 +272,15 @@ final class BlockRegistry
             foreach ($files as $file) {
                 $className = basename($file, '.php');
                 $fqcn = "SOI\\Core\\Content\\Blocks\\{$subNamespace}\\{$className}";
-                if (class_exists($fqcn) && !isset(self::$types[strtolower($className)])) {
+                if (class_exists($fqcn)) {
                     try {
                         $ref = new \ReflectionClass($fqcn);
                         if (!$ref->isAbstract() && ($ref->implementsInterface(BlockProviderInterface::class) || $ref->implementsInterface(BlockType::class))) {
                             /** @var BlockType|BlockProviderInterface $instance */
                             $instance = new $fqcn();
-                            self::register($instance);
+                            if (!isset(self::$types[$instance->type()])) {
+                                self::register($instance);
+                            }
                         }
                     } catch (\Throwable $e) {
                         // Safe skip on instantiation failure

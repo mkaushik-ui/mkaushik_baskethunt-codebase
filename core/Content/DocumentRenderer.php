@@ -9,7 +9,7 @@ use SOI\Core\Content\Contracts\RendererInterface;
  * Canonical server-side document renderer and block dispatcher.
  * Independent of the client-side Editor.js DOM.
  */
-final class DocumentRenderer implements RendererInterface
+final class DocumentRenderer
 {
     /**
      * Render a pages/posts record using structured data when present.
@@ -79,17 +79,5 @@ final class DocumentRenderer implements RendererInterface
             ], $ctx);
         }
         return $ctx->headings;
-    }
-
-    /**
-     * Implements RendererInterface for single block rendering.
-     *
-     * @param array{id:string,type:string,data:array<string,mixed>} $block
-     */
-    public function render(array $block, RenderContext $ctx): string
-    {
-        $type = (string) ($block['type'] ?? '');
-        $handler = BlockRegistry::get($type);
-        return $handler->render($block, $ctx);
     }
 }

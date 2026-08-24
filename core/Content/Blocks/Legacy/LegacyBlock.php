@@ -31,7 +31,7 @@ class LegacyBlock extends AbstractBlock
     public function sanitize(array $data): array
     {
         return [
-            'html' => Html::sanitizeContent((string)($data['html'] ?? '')),
+            'html' => Html::sanitizeLegacy((string)($data['html'] ?? '')),
         ];
     }
 
