@@ -63,72 +63,14 @@ final class EditorApi
      */
     private static function save(array $payload, bool $autosave): void
     {
-        $entity = (string) ($payload['entity'] ?? 'page');
-        $id = (int) ($payload['id'] ?? 0);
-        ContentStore::assertEntityAllowed($entity);
-
-        $mode = (string) ($payload['mode'] ?? 'structured');
-        $fields = [
-            'title' => (string) ($payload['title'] ?? ''),
-            'slug' => (string) ($payload['slug'] ?? ''),
-            'status' => (string) ($payload['status'] ?? 'draft'),
-            'meta_title' => (string) ($payload['meta_title'] ?? ''),
-            'meta_desc' => (string) ($payload['meta_desc'] ?? ''),
-            'excerpt' => (string) ($payload['excerpt'] ?? ''),
-            'categories' => $payload['categories'] ?? [],
-            'expected_updated_at' => (string) ($payload['expected_updated_at'] ?? ''),
-        ];
-
-        if ($autosave && $id > 0) {
-            $existing = ContentStore::find($entity, $id);
-            if ($existing && $fields['title'] === '') {
-                $fields['title'] = (string) ($existing['title'] ?? '');
-            }
-            if ($existing && $fields['status'] === 'draft' && isset($existing['status'])) {
-                $fields['status'] = (string) $existing['status'];
-            }
-        }
-
-        if ($mode === 'legacy') {
-            $result = ContentStore::saveLegacy($entity, $id, $fields, (string) ($payload['legacy_html'] ?? ''));
-        } else {
-            $document = Document::parse($payload['document'] ?? null);
-            $result = ContentStore::save($entity, $id, $fields, $document);
-        }
-
-        if (class_exists(Cache::class)) {
-            Cache::purgeAll();
-        }
-
-        $record = $result['record'];
-        self::respond(200, [
-            'ok' => true,
-            'autosave' => $autosave,
-            'id' => $result['id'],
-            'slug' => $record['slug'] ?? '',
-            'status' => $record['status'] ?? 'draft',
-            'updated_at' => $record['updated_at'] ?? '',
-            'editor_format' => $record['editor_format'] ?? EditorSchema::FORMAT_STRUCTURED,
-            'view_url' => self::viewUrl((string) ($record['slug'] ?? '')),
-        ]);
+        $response = ContentService::saveDocument($payload, $autosave);
+        self::respond(200, $response);
     }
 
     private static function preview(array $payload): void
     {
-        $entity = (string) ($payload['entity'] ?? 'page');
-        ContentStore::assertEntityAllowed($entity);
-        $document = Document::parse($payload['document'] ?? null);
-        $errors = Document::validate($document);
-        if ($errors !== []) {
-            throw new DocumentException(implode(' ', $errors));
-        }
-        $html = DocumentRenderer::render($document, true);
-        $headings = DocumentRenderer::extractHeadings($document);
-        self::respond(200, [
-            'ok' => true,
-            'html' => $html,
-            'headings' => $headings,
-        ]);
+        $response = ContentService::previewDocument($payload);
+        self::respond(200, $response);
     }
 
     private static function history(array $payload): void

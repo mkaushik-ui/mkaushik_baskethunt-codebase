@@ -4,12 +4,11 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Technical;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T5: Key / Value Block Provider (Skeleton).
- */
-class KeyValuesBlock extends AbstractBlock
+final class KeyValuesBlock extends AbstractBlock implements ProviderMetadataInterface
 {
     public function type(): string
     {
@@ -18,42 +17,104 @@ class KeyValuesBlock extends AbstractBlock
 
     public function label(): string
     {
-        return 'Key / Value';
+        return 'Key / Values';
     }
 
-    public function category(): string
+    public function group(): string
     {
         return 'technical';
+    }
+
+    public function description(): string
+    {
+        return 'Key and value data pairs';
+    }
+
+    public function keywords(): string
+    {
+        return 'key value metadata specs properties table pair';
+    }
+
+    public function icon(): string
+    {
+        return '🔑';
+    }
+
+    public function editorType(): string
+    {
+        return 'keyValues';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
+    {
+        return [
+            'title' => 'Specifications',
+            'items' => [
+                ['key' => 'Version', 'value' => '1.1.0'],
+            ],
+        ];
     }
 
     public function sanitize(array $data): array
     {
         $rawItems = is_array($data['items'] ?? null) ? $data['items'] : [];
         $items = [];
-        foreach ($rawItems as $item) {
-            if (is_array($item)) {
-                $items[] = [
-                    'key' => $this->inline($item['key'] ?? ''),
-                    'value' => $this->inline($item['value'] ?? ''),
-                ];
+        foreach (array_values($rawItems) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $key = Html::plainText(Html::clampText((string) ($item['key'] ?? ''), 200));
+            $value = Html::sanitizeInline((string) ($item['value'] ?? ''), 2000);
+            if ($key === '' && Html::plainText($value) === '') {
+                continue;
+            }
+            $items[] = ['key' => $key, 'value' => $value];
+            if (count($items) >= 50) {
+                break;
             }
         }
+
         return [
-            'title' => $this->inline($data['title'] ?? ''),
+            'title' => Html::plainText(Html::clampText((string) ($data['title'] ?? ''), 200)),
             'items' => $items,
         ];
     }
 
+    public function validate(array $data): array
+    {
+        return [];
+    }
+
     public function render(array $block, RenderContext $ctx): string
     {
-        $items = (array)($block['data']['items'] ?? []);
-        $html = ['<div class="kc-key-values">'];
-        foreach ($items as $item) {
-            $k = (string)($item['key'] ?? '');
-            $v = (string)($item['value'] ?? '');
-            $html[] = "<div class=\"kc-kv-row\"><span class=\"kc-kv-key\">{$k}</span><span class=\"kc-kv-val\">{$v}</span></div>";
+        $d = $this->sanitize($block['data'] ?? []);
+        $items = $d['items'];
+        $title = $d['title'];
+
+        $blockId = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $blockId !== '' ? ' data-block-id="' . $blockId . '"' : '';
+
+        $html = '<div class="kc-block kc-block-keyvalues"' . $dataAttr . '>';
+        if ($title !== '') {
+            $html .= '<div class="kc-keyvalues-title">' . Html::escape($title) . '</div>';
         }
-        $html[] = '</div>';
-        return implode("\n", $html);
+        if ($items !== []) {
+            $html .= '<dl class="kc-keyvalues-list">';
+            foreach ($items as $item) {
+                $html .= '<div class="kc-keyvalues-row">';
+                $html .= '<dt class="kc-keyvalues-key">' . Html::escape($item['key']) . '</dt>';
+                $html .= '<dd class="kc-keyvalues-val">' . $item['value'] . '</dd>';
+                $html .= '</div>';
+            }
+            $html .= '</dl>';
+        }
+        $html .= '</div>';
+
+        return $html;
     }
 }

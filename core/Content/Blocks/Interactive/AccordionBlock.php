@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Interactive;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T5: Accordion Block Provider (Skeleton).
- */
-class AccordionBlock extends AbstractBlock
+final class AccordionBlock extends AbstractBlock implements ProviderMetadataInterface
 {
+    private const MAX_ITEMS = 50;
+
     public function type(): string
     {
         return 'accordion';
@@ -21,48 +22,116 @@ class AccordionBlock extends AbstractBlock
         return 'Accordion';
     }
 
-    public function category(): string
+    public function group(): string
     {
-        return 'structured';
+        return 'interactive';
     }
 
-    public function capabilities(): array
+    public function description(): string
+    {
+        return 'Collapsible content sections';
+    }
+
+    public function keywords(): string
+    {
+        return 'accordion collapse expand details summary toggle';
+    }
+
+    public function icon(): string
+    {
+        return '↕';
+    }
+
+    public function editorType(): string
+    {
+        return 'accordion';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
     {
         return [
-            'nestable' => true,
-            'reusable' => true,
-            'wide' => false,
-            'interactive' => true,
+            'items' => [
+                ['title' => 'Section 1', 'content' => 'Content 1', 'open' => false],
+            ],
         ];
     }
 
     public function sanitize(array $data): array
     {
-        $rawItems = is_array($data['items'] ?? null) ? $data['items'] : [];
-        $items = [];
-        foreach ($rawItems as $item) {
-            if (is_array($item)) {
-                $items[] = [
-                    'title' => $this->inline($item['title'] ?? ''),
-                    'content' => $this->inline($item['content'] ?? ''),
-                    'open' => !empty($item['open']),
-                ];
-            }
+        return ['items' => self::sanitizeItems($data['items'] ?? [])];
+    }
+
+    public function validate(array $data): array
+    {
+        $items = is_array($data['items'] ?? null) ? $data['items'] : [];
+        if (count($items) > self::MAX_ITEMS) {
+            return ['Accordion cannot contain more than ' . self::MAX_ITEMS . ' items.'];
         }
-        return ['items' => $items];
+        return [];
     }
 
     public function render(array $block, RenderContext $ctx): string
     {
-        $items = (array)($block['data']['items'] ?? []);
-        $html = ['<div class="kc-accordion" data-interactive="accordion">'];
-        foreach ($items as $item) {
-            $title = (string)($item['title'] ?? '');
-            $content = (string)($item['content'] ?? '');
-            $openAttr = !empty($item['open']) ? 'open' : '';
-            $html[] = "<details class=\"kc-accordion-item\" {$openAttr}><summary class=\"kc-accordion-header\">{$title}</summary><div class=\"kc-accordion-body\">{$content}</div></details>";
+        $data = $this->sanitize(is_array($block['data'] ?? null) ? $block['data'] : []);
+        $items = $data['items'];
+        if ($items === []) {
+            return '';
         }
-        $html[] = '</div>';
-        return implode("\n", $html);
+
+        $id = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $id !== '' ? ' data-block-id="' . $id . '"' : '';
+
+        $html = '<div class="kc-block kc-block-accordion"' . $dataAttr . '>';
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = (string) ($item['title'] ?? '');
+            $content = (string) ($item['content'] ?? '');
+            $open = !empty($item['open']) ? ' open' : '';
+            if ($title === '' && Html::plainText($content) === '') {
+                continue;
+            }
+            $html .= '<details class="kc-accordion-item"' . $open . '>';
+            $html .= '<summary class="kc-accordion-summary">' . Html::escape($title !== '' ? $title : 'Accordion Item') . '</summary>';
+            $html .= '<div class="kc-accordion-content">' . $content . '</div>';
+            $html .= '</details>';
+        }
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    /**
+     * @param mixed $items
+     * @return list<array{title:string,content:string,open:bool}>
+     */
+    public static function sanitizeItems(mixed $items): array
+    {
+        if (!is_array($items)) {
+            return [];
+        }
+        $out = [];
+        foreach (array_values($items) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = Html::plainText(Html::clampText((string) ($item['title'] ?? ''), 300));
+            $content = Html::sanitizeInline((string) ($item['content'] ?? ''), 20000);
+            $open = !empty($item['open']);
+            if ($title === '' && Html::plainText($content) === '') {
+                continue;
+            }
+            $out[] = ['title' => $title, 'content' => $content, 'open' => $open];
+            if (count($out) >= self::MAX_ITEMS) {
+                break;
+            }
+        }
+        return $out;
     }
 }

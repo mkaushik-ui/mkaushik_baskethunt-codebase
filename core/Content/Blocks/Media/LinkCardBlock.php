@@ -4,12 +4,11 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Media;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T5: Link Card Block Provider (Skeleton).
- */
-class LinkCardBlock extends AbstractBlock
+class LinkCardBlock extends AbstractBlock implements ProviderMetadataInterface
 {
     public function type(): string
     {
@@ -21,26 +20,82 @@ class LinkCardBlock extends AbstractBlock
         return 'Link Card';
     }
 
-    public function category(): string
+    public function group(): string
     {
         return 'media';
+    }
+
+    public function description(): string
+    {
+        return 'Bookmark or embedded link card';
+    }
+
+    public function keywords(): string
+    {
+        return 'link card bookmark url external preview';
+    }
+
+    public function icon(): string
+    {
+        return '🔗';
+    }
+
+    public function editorType(): string
+    {
+        return 'linkCard';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
+    {
+        return [
+            'url' => 'https://example.com',
+            'title' => 'Example Link',
+            'text' => 'Description of the link target',
+        ];
     }
 
     public function sanitize(array $data): array
     {
         return [
-            'url' => $this->text($data['url'] ?? ''),
-            'title' => $this->inline($data['title'] ?? ''),
-            'text' => $this->inline($data['text'] ?? ''),
+            'url' => Html::sanitizeUrl((string) ($data['url'] ?? $data['link'] ?? '')),
+            'title' => Html::plainText((string) ($data['title'] ?? '')),
+            'text' => Html::sanitizeInline((string) ($data['text'] ?? $data['description'] ?? ''), 1000),
         ];
+    }
+
+    public function validate(array $data): array
+    {
+        return [];
     }
 
     public function render(array $block, RenderContext $ctx): string
     {
-        $data = $block['data'] ?? [];
-        $url = htmlspecialchars((string)($data['url'] ?? '#'), ENT_QUOTES, 'UTF-8');
-        $title = (string)($data['title'] ?? '');
-        $text = (string)($data['text'] ?? '');
-        return "<a href=\"{$url}\" class=\"kc-link-card\" target=\"_blank\" rel=\"noopener noreferrer\"><h4>{$title}</h4><p>{$text}</p><span class=\"kc-link-url\">{$url}</span></a>";
+        $d = $this->sanitize($block['data'] ?? []);
+        $url = $d['url'];
+        $title = $d['title'] !== '' ? $d['title'] : $url;
+        $text = $d['text'];
+
+        if ($url === '') {
+            return '';
+        }
+
+        $blockId = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $blockId !== '' ? ' data-block-id="' . $blockId . '"' : '';
+
+        $html = '<a href="' . Html::escape($url) . '" class="kc-link-card"' . $dataAttr . ' target="_blank" rel="noopener noreferrer">';
+        $html .= '<div class="kc-link-card-body">';
+        $html .= '<div class="kc-link-card-title">' . Html::escape($title) . '</div>';
+        if (Html::plainText($text) !== '') {
+            $html .= '<div class="kc-link-card-desc">' . $text . '</div>';
+        }
+        $html .= '<span class="kc-link-card-url">' . Html::escape($url) . '</span>';
+        $html .= '</div></a>';
+
+        return $html;
     }
 }

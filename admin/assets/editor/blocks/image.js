@@ -29,9 +29,13 @@
       wrap.className = 'kc-tool kc-tool-image';
       wrap.innerHTML = [
         '<div class="kc-image-frame"></div>',
-        '<div class="kc-image-actions"></div>',
-        '<input class="kc-image-alt" type="text" placeholder="Alt text">',
-        '<input class="kc-image-caption" type="text" placeholder="Caption">'
+        '<div class="kc-image-controls">',
+        '  <div class="kc-image-actions"></div>',
+        '  <div class="kc-image-meta">',
+        '    <input class="kc-image-alt" type="text" placeholder="Alt text (for accessibility)">',
+        '    <input class="kc-image-caption" type="text" placeholder="Image caption…">',
+        '  </div>',
+        '</div>'
       ].join('');
       this.nodes = {
         wrap,
@@ -49,11 +53,11 @@
     bindActions() {
       const upload = document.createElement('button');
       upload.type = 'button';
-      upload.className = 'btn btn-ghost btn-sm';
-      upload.textContent = 'Upload';
+      upload.className = 'kc-image-btn kc-image-btn-primary';
+      upload.textContent = 'Upload image';
       const browse = document.createElement('button');
       browse.type = 'button';
-      browse.className = 'btn btn-ghost btn-sm';
+      browse.className = 'kc-image-btn';
       browse.textContent = 'Media library';
       const file = document.createElement('input');
       file.type = 'file';
@@ -66,6 +70,8 @@
       browse.addEventListener('click', () => {
         if (typeof this.config.onBrowse === 'function') {
           this.config.onBrowse('image', (asset) => this.applyAsset(asset));
+        } else {
+          file.click();
         }
       });
       this.nodes.actions.appendChild(upload);
@@ -77,23 +83,33 @@
       if (this.data.url) {
         const img = document.createElement('img');
         img.src = this.data.url;
-        img.alt = this.data.alt;
+        img.alt = this.data.alt || 'Uploaded image';
         this.nodes.frame.appendChild(img);
       } else {
-        this.nodes.frame.innerHTML = '<div class="kc-image-empty">No image selected</div>';
+        this.nodes.frame.innerHTML = '<div class="kc-image-empty"><span class="kc-image-empty-icon">📷</span><span>No image selected</span></div>';
       }
     }
     applyAsset(asset) {
       this.data.assetId = asset.id || asset.assetId || null;
       this.data.url = asset.url || '';
       if (!this.data.alt && asset.alt) this.data.alt = asset.alt;
-      this.nodes.alt.value = this.data.alt;
+      if (this.nodes.alt) this.nodes.alt.value = this.data.alt;
       this.paint();
     }
     async uploadFile(file) {
-      if (typeof this.config.uploader !== 'function') return;
-      const result = await this.config.uploader(file, 'image');
-      if (result && result.url) this.applyAsset(result);
+      if (typeof this.config.uploader === 'function') {
+        const result = await this.config.uploader(file, 'image');
+        if (result && result.url) {
+          this.applyAsset(result);
+          return;
+        }
+      }
+      // Instant FileReader preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.applyAsset({ url: e.target.result, alt: file.name });
+      };
+      reader.readAsDataURL(file);
     }
     onPaste(event) {
       const files = event.detail && event.detail.file ? [event.detail.file] : [];

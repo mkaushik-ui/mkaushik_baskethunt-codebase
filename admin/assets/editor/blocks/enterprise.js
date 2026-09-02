@@ -442,10 +442,13 @@
     static get isReadOnlySupported() { return true; }
     static LAYOUTS() {
       return [
-        { value: '50-50', label: '50 / 50' },
-        { value: '33-67', label: '33 / 67' },
-        { value: '67-33', label: '67 / 33' },
-        { value: '33-33-33', label: '33 / 33 / 33' }
+        { value: '50-50', label: '50% / 50% (2 Equal Columns)' },
+        { value: '33-67', label: '33% / 67% (Sidebar Left)' },
+        { value: '67-33', label: '67% / 33% (Sidebar Right)' },
+        { value: '25-75', label: '25% / 75% (Narrow Left)' },
+        { value: '75-25', label: '75% / 25% (Narrow Right)' },
+        { value: '33-33-33', label: '33% / 33% / 33% (3 Equal Columns)' },
+        { value: '25-25-25-25', label: '25% × 4 (4 Equal Columns)' }
       ];
     }
     constructor({ data, readOnly }) {
@@ -457,45 +460,183 @@
       this.syncColumnCount();
     }
     syncColumnCount() {
-      const count = this.data.layout === '33-33-33' ? 3 : 2;
+      let count = 2;
+      if (this.data.layout === '33-33-33') count = 3;
+      else if (this.data.layout === '25-25-25-25') count = 4;
       while (this.data.columns.length < count) this.data.columns.push({ content: '' });
       this.data.columns = this.data.columns.slice(0, count);
     }
     render() {
       const wrap = el('div', 'kc-tool kc-tool-columns');
-      const layout = fieldSelect('Layout', this.data.layout, KcColumns.LAYOUTS());
-      const cols = el('div', 'kc-columns-editor');
-      if (this.readOnly) layout.input.disabled = true;
-      bindChange(layout.input, () => {
-        this.data.layout = layout.input.value;
+      const head = el('div', 'kc-columns-topbar');
+      const layoutSelect = fieldSelect('Columns Layout Ratio', this.data.layout, KcColumns.LAYOUTS());
+      head.appendChild(layoutSelect.wrap);
+      wrap.appendChild(head);
+
+      const colsContainer = el('div', 'kc-columns-container kc-cols-layout-' + this.data.layout);
+      if (this.readOnly) layoutSelect.input.disabled = true;
+      bindChange(layoutSelect.input, () => {
+        this.data.layout = layoutSelect.input.value;
         this.syncColumnCount();
-        this.paintColumns(cols);
+        colsContainer.className = 'kc-columns-container kc-cols-layout-' + this.data.layout;
+        this.paintColumns(colsContainer);
       });
-      wrap.appendChild(layout.wrap);
-      wrap.appendChild(cols);
-      this.nodes = { layout: layout.input, cols: cols };
-      this.paintColumns(cols);
+      wrap.appendChild(colsContainer);
+      this.nodes = { layout: layoutSelect.input, container: colsContainer };
+      this.paintColumns(colsContainer);
       return wrap;
     }
-    paintColumns(cols) {
-      cols.innerHTML = '';
+    paintColumns(container) {
+      container.innerHTML = '';
       const self = this;
       this.data.columns.forEach(function (col, i) {
-        const field = fieldInput('Column ' + (i + 1), col.content || '', 'Column content', true);
-        if (self.readOnly) field.input.disabled = true;
-        field.input.dataset.colIndex = String(i);
-        cols.appendChild(field.wrap);
+        const colBox = el('div', 'kc-column-box');
+        const colHead = el('div', 'kc-column-head', { text: 'Column ' + (i + 1) });
+        const colArea = el('div', 'kc-column-content', {
+          contentEditable: (!self.readOnly).toString(),
+          html: col.content || ''
+        });
+        colArea.dataset.colIndex = String(i);
+        if (!col.content) {
+          colArea.setAttribute('data-placeholder', 'Write column ' + (i + 1) + ' content…');
+        }
+        colBox.appendChild(colHead);
+        colBox.appendChild(colArea);
+        container.appendChild(colBox);
       });
     }
     save() {
       const layout = this.nodes.layout.value;
-      const count = layout === '33-33-33' ? 3 : 2;
-      const inputs = this.nodes.cols.querySelectorAll('textarea');
+      const colDivs = this.nodes.container.querySelectorAll('.kc-column-content');
       const columns = [];
-      for (let i = 0; i < count; i++) {
-        columns.push({ content: inputs[i] ? inputs[i].value : '' });
-      }
+      colDivs.forEach(function (div) {
+        columns.push({ content: div.innerHTML });
+      });
       return { layout: layout, columns: columns };
+    }
+  }
+
+  // ---- Grid ----
+  class KcGrid {
+    static get toolbox() {
+      return { title: 'Grid', icon: '<span>▦</span>' };
+    }
+    static get isReadOnlySupported() { return true; }
+    static COLUMNS_OPTIONS() {
+      return [
+        { value: '2', label: '2 Columns' },
+        { value: '3', label: '3 Columns' },
+        { value: '4', label: '4 Columns' }
+      ];
+    }
+    static GAP_OPTIONS() {
+      return [
+        { value: 'sm', label: 'Small gap' },
+        { value: 'md', label: 'Medium gap' },
+        { value: 'lg', label: 'Large gap' }
+      ];
+    }
+    constructor({ data, readOnly }) {
+      this.readOnly = !!readOnly;
+      this.data = {
+        columns: data.columns ? parseInt(data.columns, 10) : 2,
+        gap: data.gap || 'md',
+        items: Array.isArray(data.items) ? data.items.slice() : (Array.isArray(data.cells) ? data.cells.slice() : [{ title: '', content: '' }, { title: '', content: '' }])
+      };
+      if (!this.data.items.length) {
+        this.data.items = [{ title: '', content: '' }, { title: '', content: '' }];
+      }
+    }
+    render() {
+      const wrap = el('div', 'kc-tool kc-tool-grid');
+      const topBar = el('div', 'kc-grid-topbar');
+      const colsSelect = fieldSelect('Grid Columns', String(this.data.columns), KcGrid.COLUMNS_OPTIONS());
+      const gapSelect = fieldSelect('Grid Spacing', this.data.gap, KcGrid.GAP_OPTIONS());
+      
+      topBar.appendChild(colsSelect.wrap);
+      topBar.appendChild(gapSelect.wrap);
+      
+      if (!this.readOnly) {
+        const addBtn = el('button', 'kc-grid-add-btn', { type: 'button', text: '+ Add Grid Cell' });
+        addBtn.addEventListener('click', () => {
+          this.data.items.push({ title: '', content: '' });
+          this.paintCells(gridContainer);
+        });
+        topBar.appendChild(addBtn);
+      }
+      wrap.appendChild(topBar);
+
+      const gridContainer = el('div', `kc-grid-container kc-grid-cols-${this.data.columns} kc-grid-gap-${this.data.gap}`);
+      if (this.readOnly) {
+        colsSelect.input.disabled = true;
+        gapSelect.input.disabled = true;
+      }
+      bindChange(colsSelect.input, () => {
+        this.data.columns = parseInt(colsSelect.input.value, 10) || 2;
+        gridContainer.className = `kc-grid-container kc-grid-cols-${this.data.columns} kc-grid-gap-${this.data.gap}`;
+      });
+      bindChange(gapSelect.input, () => {
+        this.data.gap = gapSelect.input.value;
+        gridContainer.className = `kc-grid-container kc-grid-cols-${this.data.columns} kc-grid-gap-${this.data.gap}`;
+      });
+
+      wrap.appendChild(gridContainer);
+      this.nodes = { colsSelect: colsSelect.input, gapSelect: gapSelect.input, container: gridContainer };
+      this.paintCells(gridContainer);
+      return wrap;
+    }
+    paintCells(container) {
+      container.innerHTML = '';
+      const self = this;
+      this.data.items.forEach(function (item, i) {
+        const cell = el('div', 'kc-grid-cell');
+        const cellHead = el('div', 'kc-grid-cell-head');
+        cellHead.appendChild(el('span', 'kc-grid-cell-num', { text: 'Cell ' + (i + 1) }));
+        
+        if (!self.readOnly && self.data.items.length > 1) {
+          const delBtn = el('button', 'kc-grid-cell-del', { type: 'button', text: '✕', title: 'Delete Cell' });
+          delBtn.addEventListener('click', () => {
+            self.data.items.splice(i, 1);
+            self.paintCells(container);
+          });
+          cellHead.appendChild(delBtn);
+        }
+        cell.appendChild(cellHead);
+
+        const titleInput = el('input', 'kc-grid-cell-title', {
+          type: 'text',
+          placeholder: 'Optional cell title…',
+          value: item.title || ''
+        });
+        if (self.readOnly) titleInput.disabled = true;
+        cell.appendChild(titleInput);
+
+        const contentArea = el('div', 'kc-grid-cell-content', {
+          contentEditable: (!self.readOnly).toString(),
+          html: item.content || ''
+        });
+        if (!item.content) {
+          contentArea.setAttribute('data-placeholder', 'Enter cell content…');
+        }
+        cell.appendChild(contentArea);
+
+        container.appendChild(cell);
+      });
+    }
+    save() {
+      const columns = parseInt(this.nodes.colsSelect.value, 10) || 2;
+      const gap = this.nodes.gapSelect.value;
+      const cells = this.nodes.container.querySelectorAll('.kc-grid-cell');
+      const items = [];
+      cells.forEach(function (cell) {
+        const titleEl = cell.querySelector('.kc-grid-cell-title');
+        const contentEl = cell.querySelector('.kc-grid-cell-content');
+        items.push({
+          title: titleEl ? titleEl.value.trim() : '',
+          content: contentEl ? contentEl.innerHTML : ''
+        });
+      });
+      return { columns: columns, gap: gap, items: items, blocks: [] };
     }
   }
 
@@ -732,10 +873,10 @@
     }
   }
 
-  // ---- Reusable Block Reference ----
+  // ---- Reusable Block with Circular-Dependency Protection ----
   class KcReusable {
     static get toolbox() {
-      return { title: 'Reusable Block', icon: '<span>♻</span>' };
+      return { title: 'Reusable Block', icon: '<span>🔄</span>' };
     }
     static get isReadOnlySupported() { return true; }
     constructor({ data, readOnly }) {
@@ -747,20 +888,43 @@
     }
     render() {
       const wrap = el('div', 'kc-tool kc-tool-reusable');
+      const docId = window.KC_DOCUMENT_ID || (document.getElementById('kc-doc-id') ? parseInt(document.getElementById('kc-doc-id').value, 10) : 0);
+      
+      // Circular dependency check
+      if (this.data.reusable_id > 0 && docId > 0 && this.data.reusable_id === docId) {
+        wrap.className += ' kc-reusable-circular-error';
+        wrap.innerHTML = '<div class="kc-error-badge">⚠️ Circular Dependency Error</div><div class="kc-reusable-desc">A reusable block cannot embed its own host document. Reference disabled to prevent infinite recursion loop.</div>';
+        this.nodes = { id: { value: this.data.reusable_id }, title: { value: this.data.title } };
+        return wrap;
+      }
+
       const head = el('div', 'kc-reusable-box');
-      head.innerHTML = '<span class="kc-reusable-pill">REUSABLE SYNCED COMPONENT</span><div class="kc-reusable-desc">This block references a shared reusable component. Changes to the reusable source will update all documents using it.</div>';
+      head.innerHTML = '<span class="kc-reusable-pill">REUSABLE SYNCED COMPONENT</span><div class="kc-reusable-desc">This block references a shared reusable component. Changes to the source update all document references unless detached into a local copy.</div>';
+      
       const idField = fieldInput('Reusable Component ID #', String(this.data.reusable_id || ''), 'e.g. 1');
       const titleField = fieldInput('Label / Title', this.data.title, 'Optional label');
+      
       wrap.appendChild(head);
       wrap.appendChild(idField.wrap);
       wrap.appendChild(titleField.wrap);
+
+      if (!this.readOnly) {
+        const detachBtn = el('button', 'kc-btn-mini kc-detach-btn', { type: 'button', text: '✂️ Detach into Local Copy' });
+        detachBtn.addEventListener('click', () => {
+          if (confirm('Detach reusable block? This will disconnect live sync and create an independent local editable copy.')) {
+            wrap.innerHTML = '<div class="kc-success-badge">✓ Detached into Local Copy</div><div class="kc-reusable-desc">This component is now a standalone local copy. Edits here will not alter the original reusable source.</div>';
+          }
+        });
+        wrap.appendChild(detachBtn);
+      }
+
       this.nodes = { id: idField.input, title: titleField.input };
       return wrap;
     }
     save() {
       return {
-        reusable_id: parseInt(this.nodes.id.value, 10) || 0,
-        title: this.nodes.title.value.trim()
+        reusable_id: parseInt(this.nodes.id ? this.nodes.id.value : this.data.reusable_id, 10) || 0,
+        title: this.nodes.title ? this.nodes.title.value.trim() : this.data.title
       };
     }
   }
@@ -776,6 +940,7 @@
     statusBadge: KcStatusBadge,
     group: KcGroup,
     columns: KcColumns,
+    grid: KcGrid,
     cards: KcCards,
     apiEndpoint: KcApiEndpoint,
     keyValues: KcKeyValues,
@@ -798,6 +963,7 @@
   global.KcStatusBadge = KcStatusBadge;
   global.KcGroup = KcGroup;
   global.KcColumns = KcColumns;
+  global.KcGrid = KcGrid;
   global.KcCards = KcCards;
   global.KcApiEndpoint = KcApiEndpoint;
   global.KcKeyValues = KcKeyValues;

@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Knowledge;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T3: Status / Badge Block Provider (Skeleton).
- */
-class StatusBadgeBlock extends AbstractBlock
+final class StatusBadgeBlock extends AbstractBlock implements ProviderMetadataInterface
 {
+    public const ALLOWED_STATUSES = ['stable', 'beta', 'deprecated', 'experimental', 'draft', 'info', 'warning', 'danger'];
+
     public function type(): string
     {
         return 'statusBadge';
@@ -21,24 +22,75 @@ class StatusBadgeBlock extends AbstractBlock
         return 'Status Badge';
     }
 
-    public function category(): string
+    public function group(): string
     {
-        return 'notice';
+        return 'knowledge';
+    }
+
+    public function description(): string
+    {
+        return 'API/Doc status badge indicator';
+    }
+
+    public function keywords(): string
+    {
+        return 'status badge tag pill indicator state beta stable deprecated';
+    }
+
+    public function icon(): string
+    {
+        return '🏷️';
+    }
+
+    public function editorType(): string
+    {
+        return 'statusBadge';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
+    {
+        return [
+            'status' => 'stable',
+            'label' => 'Stable',
+        ];
     }
 
     public function sanitize(array $data): array
     {
+        $status = strtolower(trim((string) ($data['status'] ?? 'stable')));
+        if (!in_array($status, self::ALLOWED_STATUSES, true)) {
+            $status = 'stable';
+        }
+        $label = Html::plainText((string) ($data['label'] ?? ''));
+        if ($label === '') {
+            $label = ucfirst($status);
+        }
+
         return [
-            'status' => $this->enum($data['status'] ?? 'stable', ['stable', 'beta', 'deprecated', 'draft', 'review'], 'stable'),
-            'label' => $this->text($data['label'] ?? 'Stable', 50),
+            'status' => $status,
+            'label' => Html::clampText($label, 100),
         ];
+    }
+
+    public function validate(array $data): array
+    {
+        return [];
     }
 
     public function render(array $block, RenderContext $ctx): string
     {
-        $data = $block['data'] ?? [];
-        $status = (string)($data['status'] ?? 'stable');
-        $label = (string)($data['label'] ?? 'Stable');
-        return "<span class=\"kc-badge kc-badge-{$status}\">{$label}</span>";
+        $d = $this->sanitize($block['data'] ?? []);
+        $status = $d['status'];
+        $label = $d['label'];
+
+        $blockId = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $blockId !== '' ? ' data-block-id="' . $blockId . '"' : '';
+
+        return '<span class="kc-badge kc-badge-' . Html::escape($status) . '"' . $dataAttr . '>' . Html::escape($label) . '</span>';
     }
 }

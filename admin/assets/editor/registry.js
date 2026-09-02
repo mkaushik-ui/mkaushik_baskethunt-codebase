@@ -10,6 +10,10 @@
 
   function register(type, toolClass, info) {
     if (!type || !toolClass) return;
+    if (tools[type] && tools[type] !== toolClass) {
+      console.warn('[KcEditorRegistry] Duplicate registration for block tool type "' + type + '". Existing tool preserved.');
+      return;
+    }
     tools[type] = toolClass;
     meta[type] = Object.assign({ type: type, label: type, group: 'blocks' }, info || {});
   }

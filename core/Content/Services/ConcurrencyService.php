@@ -3,11 +3,21 @@ declare(strict_types=1);
 
 namespace SOI\Core\Content\Services;
 
+use SOI\Core\Services\Concurrency\ConcurrencyManager;
+
 /**
- * Task T6: Optimistic Concurrency Control Service (Skeleton).
+ * Optimistic Concurrency Control Service layer.
+ * Delegates timestamp conflict checks to ConcurrencyManager.
  */
 class ConcurrencyService
 {
+    private ConcurrencyManager $manager;
+
+    public function __construct(?ConcurrencyManager $manager = null)
+    {
+        $this->manager = $manager ?? new ConcurrencyManager();
+    }
+
     /**
      * Check if client save has a stale timestamp conflict.
      *
@@ -21,6 +31,9 @@ class ConcurrencyService
         if ($clientExpectedTimestamp === '') {
             return false;
         }
-        return strtotime($serverCurrentTimestamp) > strtotime($clientExpectedTimestamp);
+        $res = $this->manager->validateSaveConcurrency([
+            'expected_updated_at' => $clientExpectedTimestamp,
+        ], $serverCurrentTimestamp);
+        return !empty($res['conflict']);
     }
 }

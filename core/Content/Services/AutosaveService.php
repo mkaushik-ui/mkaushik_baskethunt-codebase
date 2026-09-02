@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 namespace SOI\Core\Content\Services;
 
-use SOI\Core\Content\Document;
+use SOI\Core\Content\ContentService;
 
 /**
- * Task T6: Server-side Autosave Service (Skeleton).
+ * Server-side Autosave Service layer.
+ * Delegates draft save operations to the canonical ContentService.
  */
 class AutosaveService
 {
@@ -20,14 +21,11 @@ class AutosaveService
      */
     public function saveDraft(int $documentId, array $payload, int $userId): array
     {
-        $normalized = Document::normalize($payload);
-        $encoded = Document::encode($normalized);
-
-        // Developer 6: Save into drafts/revisions storage and return timestamp
-        $now = date('c');
+        $payload['id'] = $documentId;
+        $res = ContentService::saveDocument($payload, true);
         return [
-            'success' => true,
-            'updatedAt' => $now,
+            'success' => (bool) ($res['ok'] ?? false),
+            'updatedAt' => (string) ($res['updated_at'] ?? date('c')),
         ];
     }
 }

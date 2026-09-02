@@ -11,22 +11,27 @@
   document.body.classList.add('kc-authoring');
   document.body.classList.add('kc-authoring-fullscreen');
 
+  const runtimeErrors = [];
+
+  let cfg = window.SOI_EDITOR_CFG || null;
+  if (!cfg) {
+    const cfgNode = document.getElementById('kc-editor-config');
+    if (cfgNode) {
+      try {
+        cfg = JSON.parse(cfgNode.textContent);
+      } catch (err) {
+        cfg = null;
+      }
+    }
+  }
+
+  if (!cfg) {
+    console.error('[KC Editor] Missing editor configuration (window.SOI_EDITOR_CFG or #kc-editor-config).');
+    return;
+  }
+
   const root = document.getElementById('kc-editor');
   if (!root) return;
-
-  const cfgNode = document.getElementById('kc-editor-config');
-  if (!cfgNode) {
-    showBootError('Editor configuration is missing from the page.');
-    return;
-  }
-
-  let cfg;
-  try {
-    cfg = JSON.parse(cfgNode.textContent);
-  } catch (err) {
-    showBootError('Editor configuration JSON is invalid.');
-    return;
-  }
 
   const form = root;
   const titleInput = document.getElementById('kc-doc-title');
@@ -100,7 +105,6 @@
   let selectedRevisionId = null;
   let paletteMatches = [];
   let paletteIndex = 0;
-  const runtimeErrors = [];
 
   function updateDiagnostics() {
     window.__KC_EDITOR_DIAGNOSTICS = {
@@ -210,6 +214,105 @@
     }
   }
 
+  function initResizers() {
+    let leftResizer = document.getElementById('kc-resizer-left');
+    let rightResizer = document.getElementById('kc-resizer-right');
+
+    const leftPane = document.getElementById('kc-left-pane');
+    if (!leftResizer && leftPane) {
+      leftResizer = document.createElement('div');
+      leftResizer.id = 'kc-resizer-left';
+      leftResizer.className = 'kc-resizer kc-resizer-left';
+      leftResizer.title = 'Drag to resize left panel';
+      leftResizer.setAttribute('role', 'separator');
+      leftPane.insertAdjacentElement('afterend', leftResizer);
+    }
+
+    const rightPane = document.getElementById('kc-right-pane');
+    if (!rightResizer && rightPane) {
+      rightResizer = document.createElement('div');
+      rightResizer.id = 'kc-resizer-right';
+      rightResizer.className = 'kc-resizer kc-resizer-right';
+      rightResizer.title = 'Drag to resize right panel';
+      rightResizer.setAttribute('role', 'separator');
+      rightPane.insertAdjacentElement('beforebegin', rightResizer);
+    }
+
+    let savedLeftW = 256;
+    let savedRightW = 280;
+    try {
+      const l = parseInt(localStorage.getItem('kc_pane_left_w'), 10);
+      if (l >= 180 && l <= 600) savedLeftW = l;
+      const r = parseInt(localStorage.getItem('kc_pane_right_w'), 10);
+      if (r >= 200 && r <= 600) savedRightW = r;
+    } catch (e) {}
+
+    root.style.setProperty('--kc-left-w', savedLeftW + 'px');
+    root.style.setProperty('--kc-right-w', savedRightW + 'px');
+
+    if (leftResizer) {
+      bindResizer(leftResizer, 'left', savedLeftW);
+    }
+    if (rightResizer) {
+      bindResizer(rightResizer, 'right', savedRightW);
+    }
+  }
+
+  function bindResizer(el, side, initialW) {
+    let currentW = initialW;
+
+    const onStart = function (e) {
+      e.preventDefault();
+      const startX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const startW = currentW;
+
+      el.classList.add('is-dragging');
+      document.body.classList.add('kc-resizing');
+
+      const onMove = function (ev) {
+        const currentX = ev.clientX || (ev.touches && ev.touches[0] ? ev.touches[0].clientX : startX);
+        const delta = currentX - startX;
+        const maxW = Math.min(550, Math.floor(window.innerWidth * 0.45));
+        const minW = side === 'left' ? 180 : 200;
+
+        let newW;
+        if (side === 'left') {
+          newW = Math.max(minW, Math.min(maxW, startW + delta));
+          root.style.setProperty('--kc-left-w', newW + 'px');
+        } else {
+          newW = Math.max(minW, Math.min(maxW, startW - delta));
+          root.style.setProperty('--kc-right-w', newW + 'px');
+        }
+        currentW = newW;
+      };
+
+      const onEnd = function () {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onEnd);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onEnd);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onEnd);
+        el.classList.remove('is-dragging');
+        document.body.classList.remove('kc-resizing');
+        try {
+          localStorage.setItem(side === 'left' ? 'kc_pane_left_w' : 'kc_pane_right_w', currentW);
+        } catch (err) {}
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+      window.addEventListener('touchmove', onMove);
+      window.addEventListener('touchend', onEnd);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onEnd);
+    };
+
+    el.addEventListener('mousedown', onStart);
+    el.addEventListener('touchstart', onStart);
+    el.addEventListener('pointerdown', onStart);
+  }
+
   function initPanels() {
     let prefLeft = 'open';
     let prefRight = 'open';
@@ -220,6 +323,7 @@
 
     setPane('left', prefLeft === 'open', false);
     setPane('right', prefRight === 'open', false);
+    initResizers();
 
     if (toggleLeftBtn) {
       toggleLeftBtn.addEventListener('click', function () {
@@ -246,29 +350,223 @@
     }
   }
 
-  // --- Ribbon Tab Switching ---
+  // --- Undo / Redo History Stack for EditorJS ---
+  const undoStack = [];
+  const redoStack = [];
+  let isHistoryAction = false;
+  let historyTimer = null;
+
+  async function pushHistorySnapshot() {
+    if (isHistoryAction || !editor || !editor.save) return;
+    try {
+      const data = await editor.save();
+      const json = JSON.stringify(data);
+      if (!undoStack.length || undoStack[undoStack.length - 1] !== json) {
+        undoStack.push(json);
+        if (undoStack.length > 50) undoStack.shift();
+        redoStack.length = 0;
+      }
+    } catch (e) {}
+  }
+
+  function recordHistoryDebounced() {
+    if (historyTimer) clearTimeout(historyTimer);
+    historyTimer = setTimeout(pushHistorySnapshot, 250);
+  }
+
+  async function triggerUndo() {
+    if (!editor || !editor.render || undoStack.length <= 1) return;
+    try {
+      const current = undoStack.pop();
+      redoStack.push(current);
+      const prevJson = undoStack[undoStack.length - 1];
+      const prevData = JSON.parse(prevJson);
+      isHistoryAction = true;
+      await editor.render(prevData);
+      isHistoryAction = false;
+      markDirty();
+      refreshOutline();
+      updateDiagnostics();
+    } catch (e) {
+      isHistoryAction = false;
+    }
+  }
+
+  async function triggerRedo() {
+    if (!editor || !editor.render || !redoStack.length) return;
+    try {
+      const nextJson = redoStack.pop();
+      undoStack.push(nextJson);
+      const nextData = JSON.parse(nextJson);
+      isHistoryAction = true;
+      await editor.render(nextData);
+      isHistoryAction = false;
+      markDirty();
+      refreshOutline();
+      updateDiagnostics();
+    } catch (e) {
+      isHistoryAction = false;
+    }
+  }
+
+  // --- Ribbon Toolbar Command Handlers ---
   function initRibbon() {
-    const tabs = document.querySelectorAll('.kc-ribbon-tab');
-    tabs.forEach(function (tab) {
-      tab.addEventListener('click', function () {
-        const target = tab.dataset.ribbonTab;
-        tabs.forEach(function (t) { t.classList.toggle('is-active', t === tab); });
-        const panels = document.querySelectorAll('.kc-ribbon-row');
-        panels.forEach(function (p) {
-          p.hidden = (p.dataset.ribbonPanel !== target);
-        });
+    // Undo / Redo & Commands
+    document.querySelectorAll('.kc-tool[data-cmd]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'undo') {
+          triggerUndo();
+        } else if (cmd === 'redo') {
+          triggerRedo();
+        } else if (cmd === 'delete-block') {
+          if (editor && editor.blocks && typeof lastSelectedIndex === 'number' && lastSelectedIndex >= 0) {
+            editor.blocks.delete(lastSelectedIndex);
+            lastSelectedIndex = Math.max(0, lastSelectedIndex - 1);
+            markDirty();
+            refreshOutline();
+            recordHistoryDebounced();
+          }
+        }
       });
     });
 
-    const moreBtn = document.getElementById('kc-ribbon-more-components');
-    if (moreBtn) {
-      moreBtn.addEventListener('click', function () {
-        setPane('left', true);
-        switchLeftTab('components');
-        const search = document.getElementById('kc-component-search');
-        if (search) search.focus();
+    // Block style select (Heading level / Paragraph)
+    const blockStyleSelect = document.getElementById('kc-block-style');
+    if (blockStyleSelect) {
+      blockStyleSelect.addEventListener('change', function () {
+        const val = blockStyleSelect.value;
+        if (val.startsWith('h')) {
+          const level = parseInt(val.replace('h', ''), 10) || 2;
+          insertBlockByType('heading', { level: level, text: '' });
+        } else if (val === 'paragraph') {
+          insertBlockByType('paragraph', { text: '' });
+        }
       });
     }
+
+    // Inline formatting tools
+    document.querySelectorAll('.kc-tool[data-inline]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const inlineType = btn.dataset.inline;
+        if (inlineType === 'bold') {
+          document.execCommand('bold');
+        } else if (inlineType === 'italic') {
+          document.execCommand('italic');
+        } else if (inlineType === 'underline') {
+          document.execCommand('underline');
+        } else if (inlineType === 'strike') {
+          document.execCommand('strikeThrough');
+        } else if (inlineType === 'link') {
+          const url = prompt('Enter link URL (https://...):', 'https://');
+          if (url) document.execCommand('createLink', false, url);
+        } else if (inlineType === 'inlineCode') {
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const codeEl = document.createElement('code');
+            codeEl.className = 'inline-code';
+            codeEl.textContent = range.toString();
+            range.deleteContents();
+            range.insertNode(codeEl);
+          }
+        } else if (inlineType === 'highlight') {
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const markEl = document.createElement('mark');
+            markEl.className = 'cdx-highlight';
+            markEl.textContent = range.toString();
+            range.deleteContents();
+            range.insertNode(markEl);
+          }
+        }
+        markDirty();
+        recordHistoryDebounced();
+      });
+    });
+
+    // Text alignment tools
+    document.querySelectorAll('.kc-tool[data-align]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const align = btn.dataset.align;
+        if (editor && editor.blocks && typeof lastSelectedIndex === 'number' && lastSelectedIndex >= 0) {
+          const block = editor.blocks.getBlockByIndex(lastSelectedIndex);
+          if (block && block.holder) {
+            block.holder.style.textAlign = align;
+          }
+        }
+        if (align === 'center') document.execCommand('justifyCenter');
+        else if (align === 'right') document.execCommand('justifyRight');
+        else document.execCommand('justifyLeft');
+        markDirty();
+        recordHistoryDebounced();
+      });
+    });
+
+    // Callout tone selector
+    const toneSelect = document.getElementById('kc-callout-tone-select');
+    if (toneSelect) {
+      toneSelect.addEventListener('change', function () {
+        const tone = toneSelect.value;
+        if (tone) {
+          insertBlockByType('callout', { tone: tone, title: tone.toUpperCase(), text: '' });
+          toneSelect.selectedIndex = 0;
+        }
+      });
+    }
+
+    // Table operations (+Col, +Row, -Col, -Row)
+    document.querySelectorAll('.kc-tool[data-table-op]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const op = btn.dataset.tableOp;
+        if (editor && editor.blocks) {
+          let block = (typeof lastSelectedIndex === 'number' && lastSelectedIndex >= 0) ? editor.blocks.getBlockByIndex(lastSelectedIndex) : null;
+          if (!block || !block.holder || !block.holder.querySelector('.tc-table, .tc-wrap')) {
+            const count = editor.blocks.getBlocksCount();
+            for (let i = 0; i < count; i++) {
+              const b = editor.blocks.getBlockByIndex(i);
+              if (b && b.holder && b.holder.querySelector('.tc-table, .tc-wrap')) {
+                block = b;
+                lastSelectedIndex = i;
+                break;
+              }
+            }
+          }
+
+          if (block && block.holder) {
+            const addColBtn = block.holder.querySelector('.tc-add-column');
+            const addRowBtn = block.holder.querySelector('.tc-add-row');
+            if (op === 'add-col' && addColBtn) {
+              addColBtn.click();
+            } else if (op === 'add-row' && addRowBtn) {
+              addRowBtn.click();
+            } else if (op === 'del-col') {
+              const rows = block.holder.querySelectorAll('.tc-row');
+              if (rows.length && rows[0].querySelectorAll('.tc-cell').length > 1) {
+                rows.forEach(function (r) {
+                  const cells = r.querySelectorAll('.tc-cell');
+                  if (cells.length > 1) cells[cells.length - 1].remove();
+                });
+              }
+            } else if (op === 'del-row') {
+              const rows = block.holder.querySelectorAll('.tc-row');
+              if (rows.length > 1) {
+                rows[rows.length - 1].remove();
+              }
+            }
+          } else if (op === 'add-col' || op === 'add-row') {
+            insertBlockByType('table');
+          }
+        }
+        markDirty();
+        recordHistoryDebounced();
+      });
+    });
   }
 
   // --- Multi-Tab Sidebars ---
@@ -765,17 +1063,60 @@
     if (!editor || !editor.blocks) return;
     let item = catalogItem(typeId);
     let editorType = (item && item.editorType) ? item.editorType : typeId;
-    if (editorType === 'heading') editorType = 'header';
-    if (editorType === 'link') editorType = 'linkCard';
+    let data = initialData || (item && item.data ? Object.assign({}, item.data) : {});
 
-    const data = initialData || (item && item.data ? Object.assign({}, item.data) : {});
+    if (typeId === 'list-unordered' || typeId === 'list') {
+      editorType = 'list';
+      data = Object.assign({ style: 'unordered', meta: {}, items: [{ content: '', meta: {}, items: [] }] }, initialData || {});
+    } else if (typeId === 'list-ordered') {
+      editorType = 'list';
+      data = Object.assign({ style: 'ordered', meta: { start: 1, counterType: 'numeric' }, items: [{ content: '', meta: {}, items: [] }] }, initialData || {});
+    } else if (typeId === 'list-checklist' || typeId === 'checklist') {
+      editorType = 'list';
+      data = Object.assign({ style: 'checklist', meta: {}, items: [{ content: '', meta: { checked: false }, items: [] }] }, initialData || {});
+    } else if (typeId === 'columns') {
+      editorType = 'columns';
+      data = Object.assign({ layout: '50-50', columns: [{ content: '' }, { content: '' }] }, initialData || {});
+    } else if (typeId === 'grid') {
+      editorType = 'grid';
+      data = Object.assign({ columns: 2, gap: 'md', items: [{ title: '', content: '' }, { title: '', content: '' }] }, initialData || {});
+    } else if (typeId === 'heading') {
+      editorType = 'header';
+      data = Object.assign({ text: '', level: 2 }, initialData || {});
+    } else if (typeId === 'link') {
+      editorType = 'linkCard';
+    }
+
     const curIndex = (typeof lastSelectedIndex === 'number' && lastSelectedIndex >= 0) ? (lastSelectedIndex + 1) : editor.blocks.getBlocksCount();
     try {
       await editor.blocks.insert(editorType, data, {}, curIndex, true);
+      lastSelectedIndex = curIndex;
       markDirty();
       refreshOutline();
+      recordHistoryDebounced();
     } catch (e) {
       console.error('[KC Editor] Failed to insert block:', typeId, e);
+    }
+  }
+
+  function updateDocumentMetaUI() {
+    const statusVal = statusSelect ? statusSelect.value : 'draft';
+    const statusChip = document.getElementById('kc-doc-status-chip');
+    const statusBadge = document.getElementById('kc-card-status-badge');
+    if (statusChip) {
+      statusChip.textContent = statusVal.toUpperCase();
+      statusChip.className = 'kc-card-badge is-' + statusVal;
+      statusChip.setAttribute('data-status', statusVal);
+    }
+    if (statusBadge) {
+      statusBadge.textContent = statusVal.toUpperCase();
+      statusBadge.className = 'kc-badge-mode is-' + statusVal;
+    }
+
+    const slugVal = slugInput ? slugInput.value.trim() : '';
+    const slugPreview = document.getElementById('kc-slug-preview-link');
+    if (slugPreview) {
+      slugPreview.textContent = '/docs/' + (slugVal || 'untitled');
     }
   }
 
@@ -791,6 +1132,10 @@
 
     try {
       const data = await editor.save();
+      const excerptEl = document.getElementById('kc-doc-excerpt');
+      const metaTitleEl = document.getElementById('kc-doc-meta-title') || document.querySelector('input[name="meta_title"]');
+      const metaDescEl = document.getElementById('kc-doc-meta-desc') || document.querySelector('textarea[name="meta_desc"]');
+
       const payload = {
         _action: isAutosave ? 'autosave' : 'save',
         entity: cfg.entity,
@@ -799,10 +1144,16 @@
         title: titleInput ? titleInput.value.trim() : '',
         slug: slugInput ? slugInput.value.trim() : '',
         status: statusSelect ? statusSelect.value : 'draft',
+        excerpt: excerptEl ? excerptEl.value.trim() : '',
+        meta_title: metaTitleEl ? metaTitleEl.value.trim() : '',
+        meta_desc: metaDescEl ? metaDescEl.value.trim() : '',
         expected_updated_at: updatedField ? updatedField.value : '',
         document: { schemaVersion: 1, blocks: data.blocks },
         _csrf: cfg.csrf
       };
+      if (documentField) {
+        documentField.value = JSON.stringify(payload.document);
+      }
 
       const res = await fetch(cfg.apiUrl, {
         method: 'POST',
@@ -818,6 +1169,7 @@
         if (updatedField && json.updated_at) updatedField.value = json.updated_at;
         if (slugInput && json.slug) slugInput.value = json.slug;
         if (statusSelect && json.status) statusSelect.value = json.status;
+        updateDocumentMetaUI();
         if (barState) barState.textContent = json.status ? json.status.charAt(0).toUpperCase() + json.status.slice(1) : 'Draft';
         if (liveLink && json.view_url) {
           liveLink.href = json.view_url;
@@ -946,6 +1298,7 @@
     if (window.KcStatusBadge) map.statusBadge = { class: window.KcStatusBadge };
     if (window.KcGroup) map.group = { class: window.KcGroup };
     if (window.KcColumns) map.columns = { class: window.KcColumns };
+    if (window.KcGrid) map.grid = { class: window.KcGrid };
     if (window.KcCards) map.cards = { class: window.KcCards };
     if (window.KcApiEndpoint) map.apiEndpoint = { class: window.KcApiEndpoint };
     if (window.KcKeyValues) map.keyValues = { class: window.KcKeyValues };
@@ -1052,6 +1405,12 @@
     const prevBtn = document.getElementById('kc-preview-btn');
     if (prevBtn) prevBtn.addEventListener('click', openPreview);
 
+    // Document Card action buttons
+    const cardSaveBtn = document.getElementById('kc-card-save-btn');
+    const cardPrevBtn = document.getElementById('kc-card-preview-btn');
+    if (cardSaveBtn) cardSaveBtn.addEventListener('click', function (e) { e.preventDefault(); save(false); });
+    if (cardPrevBtn) cardPrevBtn.addEventListener('click', function (e) { e.preventDefault(); openPreview(); });
+
     // Command palette trigger & shortcut
     const paletteTrigger = document.getElementById('kc-palette-trigger');
     if (paletteTrigger) paletteTrigger.addEventListener('click', openPalette);
@@ -1120,21 +1479,49 @@
       });
     });
 
-    // Global keyboard shortcuts (Ctrl/Cmd+S, Ctrl/Cmd+K)
+    // Global keyboard shortcuts (Ctrl/Cmd+S, Ctrl/Cmd+K, Ctrl/Cmd+Z, Ctrl/Cmd+Y, Ctrl/Cmd+Shift+Z)
     window.addEventListener('keydown', function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+      if (!isCmdOrCtrl) return;
+      const key = e.key.toLowerCase();
+      if (key === 's') {
         e.preventDefault();
         save(false);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      } else if (key === 'k') {
         e.preventDefault();
         openPalette();
+      } else if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          triggerRedo();
+        } else {
+          triggerUndo();
+        }
+      } else if (key === 'y') {
+        e.preventDefault();
+        triggerRedo();
       }
-    });
+    }, true);
 
-    // Mark dirty on title/slug/status changes
+    // Mark dirty & update Document metadata UI on title/slug/status changes
     if (titleInput) titleInput.addEventListener('input', markDirty);
-    if (slugInput) slugInput.addEventListener('input', markDirty);
-    if (statusSelect) statusSelect.addEventListener('change', markDirty);
+    if (slugInput) {
+      slugInput.addEventListener('input', function () {
+        markDirty();
+        updateDocumentMetaUI();
+      });
+    }
+    if (statusSelect) {
+      statusSelect.addEventListener('change', function () {
+        markDirty();
+        updateDocumentMetaUI();
+      });
+    }
+    ['kc-doc-excerpt', 'kc-doc-meta-title', 'kc-doc-meta-desc'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', markDirty);
+    });
+    updateDocumentMetaUI();
 
     // Form submit prevention
     if (form) {
@@ -1150,8 +1537,27 @@
         return;
       }
 
+      let initialData = cfg.initialData || cfg.document;
+      if (initialData && Array.isArray(initialData.blocks)) {
+        initialData = {
+          time: Date.now(),
+          blocks: initialData.blocks.map(function (b) {
+            let type = b.type || 'paragraph';
+            if (type === 'heading') type = 'header';
+            if (type === 'link') type = 'linkCard';
+            return {
+              id: b.id || ('b_' + Math.random().toString(36).substr(2, 8)),
+              type: type,
+              data: b.data || {}
+            };
+          }),
+          version: '2.30.8'
+        };
+      } else {
+        initialData = { time: Date.now(), blocks: [], version: '2.30.8' };
+      }
+
       const toolsMap = buildTools();
-      const initialData = cfg.initialData || { time: Date.now(), blocks: [], version: '2.30.8' };
 
       try {
         editor = new window.EditorJS({
@@ -1163,18 +1569,60 @@
           onChange: function (api, event) {
             markDirty();
             refreshOutline();
+            updatePaginationDebounced();
+            recordHistoryDebounced();
             const index = (api && api.blocks) ? api.blocks.getCurrentBlockIndex() : -1;
             if (index >= 0) {
               lastSelectedIndex = index;
               updateInspector(index);
             }
+            if (window.KcEditorRuntime) {
+              window.KcEditorRuntime.emit('change', { api, event });
+              window.KcEditorRuntime.updateActiveBlock();
+            }
           },
           onReady: function () {
             editorReady = true;
             root.dataset.editorState = 'ready';
+            
+            // Capture initial document state for Undo stack
+            pushHistorySnapshot();
+            
+            // Sync singleton EditorRuntime with active EditorJS instance
+            if (window.KcEditorRuntime) {
+              window.KcEditorRuntime.instance = editor;
+              window.KcEditorRuntime.setState('ready');
+            }
+
+            // Initialize Drag and Drop, Inspector, and Navigator shells
+            try {
+              if (window.KcDragDropEngine) {
+                const dd = new window.KcDragDropEngine();
+                dd.init();
+              }
+              if (window.KcInspectorShell) {
+                const insp = new window.KcInspectorShell('kc-right-pane');
+                insp.init();
+              }
+              if (window.KcNavigatorShell) {
+                const nav = new window.KcNavigatorShell('kc-left-pane');
+                nav.init();
+              }
+              if (window.KcBlockToolbar) {
+                const tb = new window.KcBlockToolbar();
+                tb.init();
+              }
+              if (window.KcFavorites && typeof window.KcFavorites.init === 'function') {
+                window.KcFavorites.init();
+              }
+            } catch (shellErr) {
+              console.error('[KC Editor] Shell sub-component init error:', shellErr);
+            }
+
             updateDiagnostics();
             refreshCounts();
             refreshOutline();
+            checkLocalRecovery();
             setStatus(idField && Number(idField.value) ? 'Saved' : 'Not saved', idField && Number(idField.value) ? 'saved' : 'new');
           }
         });
@@ -1186,6 +1634,31 @@
       root.dataset.editorState = 'ready';
       updateDiagnostics();
     }
+  }
+
+  function checkLocalRecovery() {
+    try {
+      const raw = localStorage.getItem(getDocStorageKey());
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      if (!payload || !payload.data || !payload.timestamp) return;
+      const loadTime = window.__kc_page_load_time || Date.now();
+      if (payload.timestamp < loadTime - 600000) return; // older than 10 mins
+      
+      const timeAgoStr = new Date(payload.timestamp).toLocaleTimeString();
+      if (confirm('We found an unsaved local recovery draft from ' + timeAgoStr + '. Would you like to restore it?')) {
+        if (editor && payload.data) {
+          editor.render(payload.data).then(() => {
+            if (payload.title && titleInput) titleInput.value = payload.title;
+            if (payload.slug && slugInput) slugInput.value = payload.slug;
+            markDirty();
+            setStatus('Restored local draft', 'dirty');
+          });
+        }
+      } else {
+        clearLocalRecovery();
+      }
+    } catch (e) {}
   }
 
   if (document.readyState === 'loading') {

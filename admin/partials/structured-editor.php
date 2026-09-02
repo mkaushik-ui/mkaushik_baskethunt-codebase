@@ -70,135 +70,108 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
   <input type="hidden" name="expected_updated_at" id="kc-updated-at" value="<?= esc($record['updated_at'] ?? '') ?>">
   <input type="hidden" name="document" id="kc-document-json" value="<?= esc(Document::encode($initialDocument)) ?>">
 
-  <!-- Workspace Head / Top Navigation -->
-  <header class="kc-workspace-head">
-    <div class="kc-head-left">
-      <a class="kc-head-btn kc-head-btn-exit" href="<?= esc($editorListUrl) ?>" title="Return to Knowledge Center document list">← Exit</a>
-      <input class="kc-title-input" id="kc-doc-title" name="title" value="<?= esc($record['title'] ?? '') ?>" placeholder="Document title" required autocomplete="off">
-    </div>
-    <div class="kc-head-right">
-      <span class="kc-save-chip" id="kc-save-status" data-state="<?= $isNew ? 'new' : 'saved' ?>"><?= $isNew ? 'Not saved' : 'Saved' ?></span>
-      <button type="button" class="kc-head-btn" id="kc-revisions-btn" title="View Document Revision History">Revisions</button>
-      <select class="kc-status-select" id="kc-doc-status" name="status" aria-label="Document status">
-        <?php foreach (['draft' => 'Draft', 'published' => 'Published', 'private' => 'Private'] as $value => $label): ?>
-        <option value="<?= $value ?>" <?= $currentStatus === $value ? 'selected' : '' ?>><?= $label ?></option>
-        <?php endforeach; ?>
-      </select>
-      <?php if ($isStructured): ?>
-      <button type="button" class="kc-head-btn" id="kc-preview-btn" title="Preview formatted document">Preview 👁</button>
-      <?php endif; ?>
-      <a class="kc-head-btn<?= $liveUrl === '' ? ' is-disabled' : '' ?>" id="kc-live-link" href="<?= $liveUrl !== '' ? esc($liveUrl) : '#' ?>" target="_blank" rel="noopener" <?= $liveUrl === '' ? 'aria-disabled="true"' : '' ?> title="Open live URL in new tab">Open live ↗</a>
-      <button type="button" class="kc-head-btn" id="kc-toggle-right" aria-pressed="true" title="Toggle Inspector & Settings">⚙ Inspector</button>
-      <button type="submit" class="kc-head-btn kc-head-btn-primary" id="kc-save-btn" title="Save document (Ctrl/Cmd+S)">Save</button>
-    </div>
-  </header>
+  <!-- Unified Sticky Header (Header + Title Wrapper + Ribbon) -->
+  <div class="kc-sticky-header">
+    <header class="kc-workspace-head">
+      <div class="kc-head-left">
+        <a class="kc-head-btn-exit" href="<?= esc($editorListUrl) ?>" title="Return to document list">←</a>
+        <div class="kc-head-title-stack">
+          <strong class="kc-head-title">Edit Doc Article</strong>
+          <span class="kc-doc-slug-path" id="kc-head-slug-path"><?= esc($liveUrl !== '' ? $liveUrl : '/docs/' . ($record['slug'] ?? '')) ?></span>
+        </div>
+      </div>
+      <div class="kc-head-right">
+        <span class="kc-save-chip" id="kc-save-status" data-state="<?= $isNew ? 'new' : 'saved' ?>"><?= $isNew ? 'Not saved' : 'Saved' ?></span>
+        <span class="kc-badge-mode" id="kc-card-status-badge"><?= esc(strtoupper($currentStatus)) ?></span>
+        <button type="button" class="kc-head-btn" id="kc-palette-trigger" title="Command Palette (Ctrl/Cmd+K)">⌨ Palette</button>
+        <button type="button" class="kc-head-btn" id="kc-toggle-left" aria-pressed="true" title="Open Components Panel">Components</button>
+        <?php if ($isStructured): ?>
+        <button type="button" class="kc-head-btn" id="kc-preview-btn" title="Preview formatted document">Preview</button>
+        <?php endif; ?>
+        <a class="kc-head-btn<?= $liveUrl === '' ? ' is-disabled' : '' ?>" id="kc-live-link" href="<?= $liveUrl !== '' ? esc($liveUrl) : '#' ?>" target="_blank" rel="noopener" <?= $liveUrl === '' ? 'aria-disabled="true"' : '' ?> title="Open live URL in new tab">Open live</a>
+        <button type="button" class="kc-head-btn" id="kc-toggle-right" aria-pressed="true" title="Toggle Inspector & Settings">Settings</button>
+        <button type="submit" class="kc-head-btn kc-head-btn-primary" id="kc-save-btn" title="Save document (Ctrl/Cmd+S)">Save article</button>
+      </div>
+    </header>
 
-  <?php if ($isStructured): ?>
-  <!-- Enterprise Ribbon Toolbar -->
-  <div class="kc-ribbon" id="kc-ribbon">
-    <div class="kc-ribbon-tabs" role="tablist">
-      <button type="button" class="kc-ribbon-tab is-active" data-ribbon-tab="home">Home</button>
-      <button type="button" class="kc-ribbon-tab" data-ribbon-tab="insert">Insert</button>
-      <button type="button" class="kc-ribbon-tab" data-ribbon-tab="layout">Layout</button>
-      <button type="button" class="kc-ribbon-tab" data-ribbon-tab="components">Components</button>
-      <button type="button" class="kc-ribbon-tab" data-ribbon-tab="document">Document</button>
-      <button type="button" class="kc-ribbon-tab" data-ribbon-tab="review">Review</button>
+    <div class="kc-title-wrapper">
+      <label for="kc-doc-title" class="kc-title-label">DOCUMENT TITLE</label>
+      <input class="kc-title-input" id="kc-doc-title" name="title" value="<?= esc($record['title'] ?? '') ?>" placeholder="Controlled Existing File Batch Migration" required autocomplete="off">
     </div>
 
-    <!-- Home Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="home">
-      <div class="kc-ribbon-group" title="History">
-        <button type="button" class="kc-tool" data-cmd="undo" title="Undo (Ctrl/Cmd+Z)">↶</button>
-        <button type="button" class="kc-tool" data-cmd="redo" title="Redo (Ctrl/Cmd+Y)">↷</button>
+    <?php if ($isStructured): ?>
+    <!-- Toolbar Ribbon -->
+    <div class="kc-ribbon" id="kc-ribbon">
+      <div class="kc-ribbon-tabs-header">
+        <button type="button" class="kc-ribbon-tab-btn is-active" data-ribbon-tab="home">Home</button>
       </div>
-      <div class="kc-ribbon-group" title="Paragraph / Heading style">
-        <select class="kc-tool-select" id="kc-block-style" aria-label="Paragraph style">
-          <option value="paragraph">Paragraph</option>
-          <option value="h2">Heading 2</option>
-          <option value="h3">Heading 3</option>
-          <option value="h4">Heading 4</option>
-          <option value="h5">Heading 5</option>
-          <option value="h6">Heading 6</option>
-        </select>
-      </div>
-      <div class="kc-ribbon-group" title="Inline formatting">
-        <button type="button" class="kc-tool" data-inline="bold" title="Bold (Ctrl/Cmd+B)"><strong>B</strong></button>
-        <button type="button" class="kc-tool" data-inline="italic" title="Italic (Ctrl/Cmd+I)"><em>I</em></button>
-        <button type="button" class="kc-tool" data-inline="underline" title="Underline (Ctrl/Cmd+U)"><span style="text-decoration:underline">U</span></button>
-        <button type="button" class="kc-tool" data-inline="strike" title="Strikethrough"><s>S</s></button>
-        <button type="button" class="kc-tool" data-inline="inlineCode" title="Inline code">&lt;/&gt;</button>
-        <button type="button" class="kc-tool" data-inline="link" title="Hyperlink">🔗</button>
-      </div>
-      <div class="kc-ribbon-group" title="Lists">
-        <button type="button" class="kc-tool" data-insert="list-unordered" title="Bulleted list">• List</button>
-        <button type="button" class="kc-tool" data-insert="list-ordered" title="Numbered list">1. List</button>
-        <button type="button" class="kc-tool" data-insert="list-checklist" title="Checklist">☑ List</button>
-      </div>
-      <div class="kc-ribbon-group" title="Panels">
-        <button type="button" class="kc-tool" id="kc-toggle-left" aria-pressed="true" title="Toggle Left Library / Navigator">▦ Library</button>
-        <button type="button" class="kc-tool" id="kc-palette-trigger" title="Command Palette (Ctrl/Cmd+K)">⌨ Palette</button>
-      </div>
-    </div>
+      <div class="kc-ribbon-row" data-ribbon-panel="home">
+        <div class="kc-ribbon-group" title="History">
+          <button type="button" class="kc-tool" data-cmd="undo" title="Undo (Ctrl/Cmd+Z)">↶</button>
+          <button type="button" class="kc-tool" data-cmd="redo" title="Redo (Ctrl/Cmd+Y)">↷</button>
+        </div>
 
-    <!-- Insert Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="insert" hidden>
-      <div class="kc-ribbon-group" title="Insert elements">
-        <button type="button" class="kc-tool" data-insert="image" title="Insert Image">🖼 Image</button>
-        <button type="button" class="kc-tool" data-insert="file" title="Insert File Attachment">📎 File</button>
-        <button type="button" class="kc-tool" data-insert="table" title="Insert Table">▦ Table</button>
-        <button type="button" class="kc-tool" data-insert="quote" title="Insert Quote">“ Quote</button>
-        <button type="button" class="kc-tool" data-insert="divider" title="Insert Divider Line">— Divider</button>
-        <button type="button" class="kc-tool" data-insert="code" title="Insert Code Snippet">&lt;/&gt; Code</button>
-        <button type="button" class="kc-tool" data-insert="codeGroup" title="Insert Multi-Language Code Group">{ } Code Group</button>
-        <button type="button" class="kc-tool" data-insert="callout" title="Insert Callout Notice">! Callout</button>
-        <button type="button" class="kc-tool" data-insert="apiEndpoint" title="Insert API Endpoint Spec">⚡ API Endpoint</button>
-        <button type="button" class="kc-tool" data-insert="keyValues" title="Insert Key/Value Specification">☷ Key/Value</button>
-        <button type="button" class="kc-tool" data-insert="link" title="Insert Link Card">🔗 Link Card</button>
-      </div>
-    </div>
+        <div class="kc-ribbon-group" title="Paragraph / Heading style">
+          <select class="kc-tool-select" id="kc-block-style" aria-label="Paragraph style">
+            <option value="paragraph" selected>Paragraph</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+            <option value="h4">Heading 4</option>
+            <option value="h5">Heading 5</option>
+            <option value="h6">Heading 6</option>
+          </select>
+        </div>
 
-    <!-- Layout Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="layout" hidden>
-      <div class="kc-ribbon-group" title="Containers & Layouts">
-        <button type="button" class="kc-tool" data-insert="group" title="Insert Group Container">▢ Group</button>
-        <button type="button" class="kc-tool" data-insert="columns" title="Insert Multi-Column Layout">▥ Columns (50/50)</button>
-        <button type="button" class="kc-tool" data-insert="cards" title="Insert Cards Grid">▤ Cards Grid</button>
-        <button type="button" class="kc-tool" data-insert="reusable" title="Insert Reusable Shared Component">♻ Reusable Block</button>
-      </div>
-    </div>
+        <div class="kc-ribbon-group" title="Inline formatting">
+          <button type="button" class="kc-tool" data-inline="bold" title="Bold (Ctrl/Cmd+B)"><strong>B</strong></button>
+          <button type="button" class="kc-tool" data-inline="italic" title="Italic (Ctrl/Cmd+I)"><em>I</em></button>
+          <button type="button" class="kc-tool" data-inline="underline" title="Underline (Ctrl/Cmd+U)"><span style="text-decoration:underline">U</span></button>
+          <button type="button" class="kc-tool" data-inline="inlineCode" title="Inline code">&lt;/&gt;</button>
+          <button type="button" class="kc-tool" data-inline="highlight" title="Highlight text">HL</button>
+        </div>
 
-    <!-- Components Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="components" hidden>
-      <div class="kc-ribbon-group" title="Knowledge components">
-        <button type="button" class="kc-tool" data-insert="steps" title="Insert Numbered Steps">1. Steps</button>
-        <button type="button" class="kc-tool" data-insert="accordion" title="Insert Expandable Accordion">▾ Accordion</button>
-        <button type="button" class="kc-tool" data-insert="faq" title="Insert FAQ Schema Block">? FAQ</button>
-        <button type="button" class="kc-tool" data-insert="tabs" title="Insert Platform/Option Tabs">↹ Tabs</button>
-        <button type="button" class="kc-tool" data-insert="definitionList" title="Insert Glossary Term Definitions">≡ Glossary</button>
-        <button type="button" class="kc-tool" data-insert="statusBadge" title="Insert Status Badge">● Status Badge</button>
-        <button type="button" class="kc-tool" id="kc-ribbon-more-components" title="Open Components Panel">▦ Full Library…</button>
-      </div>
-    </div>
+        <div class="kc-ribbon-group" title="Lists">
+          <button type="button" class="kc-tool" data-insert="list-unordered" title="Bulleted list">• List</button>
+          <button type="button" class="kc-tool" data-insert="list-ordered" title="Numbered list">1. List</button>
+          <button type="button" class="kc-tool" data-insert="list-checklist" title="Checklist">☐ List</button>
+        </div>
 
-    <!-- Document Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="document" hidden>
-      <div class="kc-ribbon-group" title="Document tools">
-        <button type="button" class="kc-tool" id="kc-open-templates" title="Choose a Document Starter Template">📋 Templates</button>
-        <button type="button" class="kc-tool" id="kc-open-patterns" title="Insert Reusable Block Pattern">🧩 Patterns</button>
-        <button type="button" class="kc-tool" id="kc-open-reusable-mgr" title="Manage Reusable Shared Blocks">♻ Reusable Manager</button>
-        <button type="button" class="kc-tool" id="kc-doc-meta-btn" title="Edit Document SEO & Metadata">⚙ Metadata</button>
-      </div>
-    </div>
+        <div class="kc-ribbon-group" title="Quick Elements">
+          <button type="button" class="kc-tool" data-inline="link" title="Hyperlink">Link</button>
+          <button type="button" class="kc-tool" data-insert="image" title="Insert Image">Image</button>
+          <button type="button" class="kc-tool" data-insert="quote" title="Insert Quote">Quote</button>
+          <select class="kc-tool-select" id="kc-callout-tone-select" aria-label="Insert Callout with tone">
+            <option value="" disabled selected>Callout...</option>
+            <option value="info">Info Callout</option>
+            <option value="note">Note Callout</option>
+            <option value="tip">Tip Callout</option>
+            <option value="warning">Warning Callout</option>
+            <option value="danger">Danger Callout</option>
+            <option value="success">Success Callout</option>
+          </select>
+        </div>
 
-    <!-- Review Tab -->
-    <div class="kc-ribbon-row" data-ribbon-panel="review" hidden>
-      <div class="kc-ribbon-group" title="Review & History">
-        <button type="button" class="kc-tool" id="kc-ribbon-revisions" title="Open Document Revision History">🕒 Revision History</button>
-        <button type="button" class="kc-tool" id="kc-local-backup-btn" title="View Local Recovery Buffer">💾 Local Backup</button>
+        <div class="kc-ribbon-group" title="Table operations">
+          <button type="button" class="kc-tool" data-insert="table" title="Insert Table">Table</button>
+          <button type="button" class="kc-tool" data-table-op="add-col" title="Add Column">+Col</button>
+          <button type="button" class="kc-tool" data-table-op="add-row" title="Add Row">+Row</button>
+          <button type="button" class="kc-tool" data-table-op="del-col" title="Delete Column">-Col</button>
+          <button type="button" class="kc-tool" data-table-op="del-row" title="Delete Row">-Row</button>
+          <button type="button" class="kc-tool kc-tool-danger" data-cmd="delete-block" title="Delete Block">Del</button>
+        </div>
+
+        <div class="kc-ribbon-group" title="Alignment & Extras">
+          <button type="button" class="kc-tool" data-align="left" title="Align Left">Left</button>
+          <button type="button" class="kc-tool" data-align="center" title="Align Center">Center</button>
+          <button type="button" class="kc-tool" data-align="right" title="Align Right">Right</button>
+          <button type="button" class="kc-tool" data-insert="delimiter" title="Horizontal Rule">Rule</button>
+          <button type="button" class="kc-tool" data-insert="code" title="Raw Code / HTML">HTML</button>
+        </div>
       </div>
     </div>
+    <?php endif; ?>
   </div>
-  <?php endif; ?>
 
   <div class="kc-workspace-body">
     <?php if ($isStructured): ?>
@@ -299,6 +272,7 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
         </div>
       </div>
     </aside>
+    <div class="kc-resizer kc-resizer-left" id="kc-resizer-left" title="Drag to resize left panel" role="separator" aria-label="Resize left panel"></div>
     <?php endif; ?>
 
     <!-- Main Canvas Area -->
@@ -352,6 +326,8 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
       <?php endif; ?>
     </main>
 
+    <div class="kc-resizer kc-resizer-right" id="kc-resizer-right" title="Drag to resize right panel" role="separator" aria-label="Resize right panel"></div>
+
     <!-- Right Pane: Document, Block, and Layout Inspector -->
     <aside class="kc-right-pane" id="kc-right-pane" aria-label="Document, Block, and Layout Inspector">
       <div class="kc-pane-tabs">
@@ -363,39 +339,67 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
 
       <!-- Document Tab Panel -->
       <div class="kc-right-panel" data-right-panel="doc">
-        <div class="kc-inspector-section">
-          <h3>Document Metadata</h3>
-          <div class="kc-field">
-            <label for="kc-doc-slug">URL Slug</label>
-            <input id="kc-doc-slug" name="slug" value="<?= esc($record['slug'] ?? '') ?>" placeholder="auto-generated-from-title">
+        <!-- Card 1: Publish & Actions -->
+        <div class="kc-settings-card">
+          <div class="kc-card-head">
+            <strong>Publish</strong>
+            <span class="kc-card-badge is-<?= esc($currentStatus) ?>" id="kc-doc-status-chip" data-status="<?= esc($currentStatus) ?>"><?= esc(strtoupper($currentStatus)) ?></span>
           </div>
-          <?php if (!empty($editorShowExcerpt)): ?>
+
           <div class="kc-field">
-            <label for="kc-doc-excerpt">Excerpt</label>
-            <textarea id="kc-doc-excerpt" name="excerpt" rows="3" placeholder="Summary excerpt for cards and search…"><?= esc($record['excerpt'] ?? '') ?></textarea>
-          </div>
-          <?php endif; ?>
-          <div class="kc-field">
-            <label>Meta Title (SEO)</label>
-            <input name="meta_title" value="<?= esc($record['meta_title'] ?? '') ?>" placeholder="Custom page title for search engines…">
-          </div>
-          <div class="kc-field">
-            <label>Meta Description (SEO)</label>
-            <textarea name="meta_desc" rows="3" placeholder="Brief description for search result snippets…"><?= esc($record['meta_desc'] ?? '') ?></textarea>
-          </div>
-          <?php if (!empty($editorCategories)): ?>
-          <div class="kc-field">
-            <span class="kc-field-label">Categories</span>
-            <div class="kc-categories-box">
-              <?php foreach ($editorCategories as $cat): ?>
-              <label class="kc-check">
-                <input type="checkbox" name="categories[]" value="<?= (int) $cat['id'] ?>" <?= in_array($cat['id'], $editorAssignedCats ?? []) ? 'checked' : '' ?>>
-                <?= esc($cat['name']) ?>
-              </label>
+            <label for="kc-doc-status">Document status</label>
+            <select class="kc-card-select" id="kc-doc-status" name="status">
+              <?php foreach (['draft' => 'Draft', 'in_review' => 'In Review', 'approved' => 'Approved', 'published' => 'Published', 'archived' => 'Archived'] as $value => $label): ?>
+              <option value="<?= $value ?>" <?= $currentStatus === $value ? 'selected' : '' ?>><?= $label ?></option>
               <?php endforeach; ?>
-            </div>
+            </select>
           </div>
-          <?php endif; ?>
+
+          <div class="kc-field">
+            <label for="kc-doc-slug">URL slug</label>
+            <input class="kc-card-input" id="kc-doc-slug" name="slug" value="<?= esc($record['slug'] ?? '') ?>" placeholder="url-slug-handle">
+            <span class="kc-slug-preview-link" id="kc-slug-preview-link"><?= esc($liveUrl !== '' ? $liveUrl : '/docs/' . ($record['slug'] ?? '')) ?></span>
+          </div>
+
+          <div class="kc-cat-box">
+            <div class="kc-cat-badge-row">
+              <span class="kc-cat-label">Category</span>
+              <strong class="kc-cat-val">Developer Docs</strong>
+            </div>
+            <p class="kc-cat-note">Category assignment remains automatic and cannot be changed from this workspace.</p>
+          </div>
+
+          <div class="kc-card-actions">
+            <button type="submit" class="kc-card-btn kc-card-btn-primary" id="kc-card-save-btn">Save article</button>
+            <button type="button" class="kc-card-btn kc-card-btn-secondary" id="kc-card-preview-btn">Preview article</button>
+            <a class="kc-card-btn kc-card-btn-secondary" id="kc-card-live-link" href="<?= $liveUrl !== '' ? esc($liveUrl) : '#' ?>" target="_blank" rel="noopener">View public article</a>
+          </div>
+        </div>
+
+        <!-- Card 2: Summary -->
+        <div class="kc-settings-card">
+          <div class="kc-card-head">
+            <strong>Summary</strong>
+          </div>
+          <div class="kc-field">
+            <label for="kc-doc-excerpt">Article excerpt</label>
+            <textarea class="kc-card-textarea" id="kc-doc-excerpt" name="excerpt" rows="3" placeholder="Brief summary excerpt for cards and search…"><?= esc($record['excerpt'] ?? '') ?></textarea>
+          </div>
+        </div>
+
+        <!-- Card 3: Search metadata -->
+        <div class="kc-settings-card">
+          <div class="kc-card-head">
+            <strong>Search metadata</strong>
+          </div>
+          <div class="kc-field">
+            <label for="kc-doc-meta-title">Meta title</label>
+            <input class="kc-card-input" id="kc-doc-meta-title" name="meta_title" value="<?= esc($record['meta_title'] ?? '') ?>" placeholder="Custom page title for search engines…">
+          </div>
+          <div class="kc-field">
+            <label for="kc-doc-meta-desc">Meta description</label>
+            <textarea class="kc-card-textarea" id="kc-doc-meta-desc" name="meta_desc" rows="3" placeholder="Brief description for search result snippets…"><?= esc($record['meta_desc'] ?? '') ?></textarea>
+          </div>
         </div>
       </div>
 
@@ -574,7 +578,14 @@ if ($isStructured) {
 <script src="' . $asset('editor/vendor/table.js') . '"></script>
 <script src="' . $asset('editor/vendor/underline.js') . '"></script>
 <script src="' . $asset('editor/vendor/inline-code.js') . '"></script>
+<script src="' . $asset('editor/runtime/bootstrap.js') . '"></script>
 <script src="' . $asset('editor/registry.js') . '"></script>
+<script src="' . $asset('editor/ui/block-toolbar.js') . '"></script>
+<script src="' . $asset('editor/ui/inspector-shell.js') . '"></script>
+<script src="' . $asset('editor/ui/navigator-shell.js') . '"></script>
+<script src="' . $asset('editor/layout/drag-drop.js') . '"></script>
+<script src="' . $asset('editor/layout/layout-inspector.js') . '"></script>
+<script src="' . $asset('editor/blocks/favorites.js') . '"></script>
 <script src="' . $asset('editor/blocks/callout.js') . '"></script>
 <script src="' . $asset('editor/blocks/link.js') . '"></script>
 <script src="' . $asset('editor/blocks/code.js') . '"></script>

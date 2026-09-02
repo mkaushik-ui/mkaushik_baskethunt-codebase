@@ -1,0 +1,241 @@
+/**
+ * Task A2-T17: Drop Zone Visual Indicators.
+ *
+ * Provides visual feedback for valid and invalid drag destinations.
+ * Uses the existing Knowledge Center editor design tokens.
+ */
+
+/* --------------------------------------------------------------------------
+ * Drop Zone Container State
+ * -------------------------------------------------------------------------- */
+
+#kc-editorjs.kc-dropzone-active {
+    position: relative;
+}
+
+/*
+ * Prevent the indicator itself from interfering with drag/drop hit testing.
+ */
+.kc-drop-indicator,
+.kc-drop-invalid-indicator {
+    pointer-events: none;
+    user-select: none;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Valid Drop Target — Blue Insertion Line
+ * -------------------------------------------------------------------------- */
+
+/*
+ * The drag/drop engine can position this element immediately before the
+ * current insertion target.
+ */
+.kc-drop-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--kc-radius, 8px);
+    background: var(--kc-brand, #2563eb);
+    box-shadow:
+        0 0 0 1px rgba(37, 99, 235, 0.12),
+        0 2px 6px rgba(37, 99, 235, 0.22);
+    z-index: 100;
+    opacity: 1;
+    transform: translateY(-1px);
+    transition:
+        top 0.08s ease,
+        opacity 0.12s ease;
+}
+
+/*
+ * Small endpoint markers make the insertion position unambiguous without
+ * changing the document layout.
+ */
+.kc-drop-indicator::before,
+.kc-drop-indicator::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--kc-brand, #2563eb);
+    transform: translateY(-50%);
+}
+
+.kc-drop-indicator::before {
+    left: -1px;
+}
+
+.kc-drop-indicator::after {
+    right: -1px;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Valid Drop Target — Target Highlight
+ * -------------------------------------------------------------------------- */
+
+/*
+ * Optional target state for the block that will receive the insertion.
+ * This does not alter dimensions, preventing layout shift while dragging.
+ */
+.kc-drop-target {
+    position: relative;
+    border-radius: var(--kc-radius, 8px);
+    box-shadow:
+        inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+}
+
+.kc-drop-target::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Invalid Drop Target — Red Warning Indicator
+ * -------------------------------------------------------------------------- */
+
+/*
+ * The drag/drop engine should apply this class when the current pointer
+ * location cannot accept the dragged component.
+ */
+.kc-drop-invalid-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    min-height: 3px;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid #fecaca;
+    border-left: 3px solid #dc2626;
+    border-radius: var(--kc-radius, 8px);
+    background: #fef2f2;
+    color: #991b1b;
+    box-sizing: border-box;
+    z-index: 100;
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
+    font-size: 0.72rem;
+    font-weight: 650;
+    line-height: 1.35;
+    box-shadow:
+        0 2px 6px rgba(220, 38, 38, 0.12);
+}
+
+.kc-drop-invalid-indicator::before {
+    content: "×";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    border-radius: 50%;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    vertical-align: -1px;
+}
+
+
+/* --------------------------------------------------------------------------
+ * State Visibility
+ * -------------------------------------------------------------------------- */
+
+.kc-drop-indicator[hidden],
+.kc-drop-invalid-indicator[hidden] {
+    display: none !important;
+}
+
+.kc-drop-indicator.is-hidden,
+.kc-drop-invalid-indicator.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Dragging Component Tile
+ * -------------------------------------------------------------------------- */
+
+.kc-is-dragging {
+    opacity: 0.6;
+    cursor: grabbing !important;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Editor Drag State
+ * -------------------------------------------------------------------------- */
+
+#kc-editorjs.kc-dropzone-active .ce-block {
+    transition:
+        box-shadow 0.1s ease,
+        background-color 0.1s ease;
+}
+
+#kc-editorjs.kc-dropzone-active {
+    outline: none;
+}
+
+
+/* --------------------------------------------------------------------------
+ * Accessibility
+ * -------------------------------------------------------------------------- */
+
+/*
+ * Respect reduced-motion preferences without removing the actual indicator.
+ */
+@media (prefers-reduced-motion: reduce) {
+
+    .kc-drop-indicator,
+    .kc-drop-invalid-indicator,
+    #kc-editorjs.kc-dropzone-active .ce-block {
+        transition: none;
+    }
+}
+
+
+/* --------------------------------------------------------------------------
+ * Responsive Behavior
+ * -------------------------------------------------------------------------- */
+
+@media (max-width: 980px) {
+    .kc-drop-indicator {
+        height: 3px;
+    }
+
+    .kc-drop-invalid-indicator {
+        font-size: 0.7rem;
+        padding: 4px 7px;
+    }
+}
+
+@media (max-width: 720px) {
+    .kc-drop-indicator {
+        height: 3px;
+    }
+
+    .kc-drop-invalid-indicator {
+        left: 4px;
+        right: 4px;
+        font-size: 0.68rem;
+    }
+}

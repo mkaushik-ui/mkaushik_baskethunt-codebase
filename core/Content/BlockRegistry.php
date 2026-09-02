@@ -4,32 +4,32 @@ declare(strict_types=1);
 namespace SOI\Core\Content;
 
 use SOI\Core\Content\Contracts\BlockProviderInterface;
-use SOI\Core\Content\Blocks\AccordionBlock;
-use SOI\Core\Content\Blocks\ApiEndpointBlock;
-use SOI\Core\Content\Blocks\CalloutBlock;
-use SOI\Core\Content\Blocks\CardsBlock;
-use SOI\Core\Content\Blocks\CodeBlock;
-use SOI\Core\Content\Blocks\CodeGroupBlock;
-use SOI\Core\Content\Blocks\ColumnsBlock;
-use SOI\Core\Content\Blocks\DefinitionListBlock;
-use SOI\Core\Content\Blocks\DividerBlock;
-use SOI\Core\Content\Blocks\FaqBlock;
-use SOI\Core\Content\Blocks\FileBlock;
-use SOI\Core\Content\Blocks\GroupBlock;
-use SOI\Core\Content\Blocks\HeadingBlock;
-use SOI\Core\Content\Blocks\ImageBlock;
-use SOI\Core\Content\Blocks\KbdBlock;
-use SOI\Core\Content\Blocks\KeyValuesBlock;
-use SOI\Core\Content\Blocks\LegacyBlock;
-use SOI\Core\Content\Blocks\LinkBlock;
-use SOI\Core\Content\Blocks\ListBlock;
-use SOI\Core\Content\Blocks\ParagraphBlock;
-use SOI\Core\Content\Blocks\QuoteBlock;
+use SOI\Core\Content\Blocks\Basic\CalloutBlock;
+use SOI\Core\Content\Blocks\Basic\DividerBlock;
+use SOI\Core\Content\Blocks\Basic\HeadingBlock;
+use SOI\Core\Content\Blocks\Basic\ListBlock;
+use SOI\Core\Content\Blocks\Basic\ParagraphBlock;
+use SOI\Core\Content\Blocks\Basic\QuoteBlock;
+use SOI\Core\Content\Blocks\Interactive\AccordionBlock;
+use SOI\Core\Content\Blocks\Interactive\TabsBlock;
+use SOI\Core\Content\Blocks\Knowledge\FaqBlock;
+use SOI\Core\Content\Blocks\Knowledge\StatusBadgeBlock;
+use SOI\Core\Content\Blocks\Knowledge\StepsBlock;
+use SOI\Core\Content\Blocks\Layout\CardsBlock;
+use SOI\Core\Content\Blocks\Layout\ColumnsBlock;
+use SOI\Core\Content\Blocks\Layout\GroupBlock;
+use SOI\Core\Content\Blocks\Legacy\LegacyBlock;
+use SOI\Core\Content\Blocks\Media\FileBlock;
+use SOI\Core\Content\Blocks\Media\ImageBlock;
+use SOI\Core\Content\Blocks\Media\LinkCardBlock as LinkBlock;
 use SOI\Core\Content\Blocks\ReusableBlock;
-use SOI\Core\Content\Blocks\StatusBadgeBlock;
-use SOI\Core\Content\Blocks\StepsBlock;
-use SOI\Core\Content\Blocks\TableBlock;
-use SOI\Core\Content\Blocks\TabsBlock;
+use SOI\Core\Content\Blocks\Technical\ApiEndpointBlock;
+use SOI\Core\Content\Blocks\Technical\CodeBlock;
+use SOI\Core\Content\Blocks\Technical\CodeGroupBlock;
+use SOI\Core\Content\Blocks\Technical\DefinitionListBlock;
+use SOI\Core\Content\Blocks\Technical\KbdBlock;
+use SOI\Core\Content\Blocks\Technical\KeyValuesBlock;
+use SOI\Core\Content\Blocks\Technical\TableBlock;
 use SOI\Core\Content\Blocks\UnknownBlock;
 use SOI\Core\Hook;
 
@@ -67,7 +67,16 @@ final class BlockRegistry
      */
     public static function register(BlockType|BlockProviderInterface $block): void
     {
-        self::$types[$block->type()] = $block;
+        $type = $block->type();
+        if (isset(self::$types[$type])) {
+            $existingClass = get_class(self::$types[$type]);
+            $newClass = get_class($block);
+            if ($existingClass !== $newClass) {
+                throw new \LogicException("Duplicate block registration detected for type '{$type}': {$existingClass} vs {$newClass}");
+            }
+            return;
+        }
+        self::$types[$type] = $block;
     }
 
     /**

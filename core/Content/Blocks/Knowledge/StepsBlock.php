@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Knowledge;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T3: Steps Block Provider (Skeleton).
- */
-class StepsBlock extends AbstractBlock
+final class StepsBlock extends AbstractBlock implements ProviderMetadataInterface
 {
+    private const MAX_STEPS = 50;
+
     public function type(): string
     {
         return 'steps';
@@ -18,43 +19,96 @@ class StepsBlock extends AbstractBlock
 
     public function label(): string
     {
-        return 'Steps';
+        return 'Steps List';
     }
 
-    public function category(): string
+    public function group(): string
     {
-        return 'structured';
+        return 'knowledge';
+    }
+
+    public function description(): string
+    {
+        return 'Numbered step-by-step procedure guide';
+    }
+
+    public function keywords(): string
+    {
+        return 'steps procedure guide tutorial sequence process timeline';
+    }
+
+    public function icon(): string
+    {
+        return '🔢';
+    }
+
+    public function editorType(): string
+    {
+        return 'steps';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
+    {
+        return [
+            'items' => [
+                ['title' => 'Step 1', 'content' => 'Description for step 1'],
+            ],
+        ];
     }
 
     public function sanitize(array $data): array
     {
         $rawItems = is_array($data['items'] ?? null) ? $data['items'] : [];
         $items = [];
-        foreach ($rawItems as $item) {
-            if (is_array($item)) {
-                $items[] = [
-                    'title' => $this->inline($item['title'] ?? ''),
-                    'content' => $this->inline($item['content'] ?? ''),
-                ];
+        foreach (array_values($rawItems) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = Html::plainText(Html::clampText((string) ($item['title'] ?? ''), 300));
+            $content = Html::sanitizeInline((string) ($item['content'] ?? ''), 20000);
+            if ($title === '' && Html::plainText($content) === '') {
+                continue;
+            }
+            $items[] = ['title' => $title, 'content' => $content];
+            if (count($items) >= self::MAX_STEPS) {
+                break;
             }
         }
         return ['items' => $items];
     }
 
+    public function validate(array $data): array
+    {
+        return [];
+    }
+
     public function render(array $block, RenderContext $ctx): string
     {
-        $items = (array)($block['data']['items'] ?? []);
-        if (empty($items)) {
+        $d = $this->sanitize($block['data'] ?? []);
+        $items = $d['items'];
+        if ($items === []) {
             return '';
         }
-        $html = ['<div class="kc-steps">'];
-        foreach ($items as $idx => $step) {
+
+        $blockId = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $blockId !== '' ? ' data-block-id="' . $blockId . '"' : '';
+
+        $html = '<ol class="kc-block kc-block-steps"' . $dataAttr . '>';
+        foreach ($items as $idx => $item) {
             $num = $idx + 1;
-            $title = (string)($step['title'] ?? '');
-            $content = (string)($step['content'] ?? '');
-            $html[] = "<div class=\"kc-step\"><span class=\"kc-step-num\">{$num}</span><div class=\"kc-step-body\"><h4>{$title}</h4><p>{$content}</p></div></div>";
+            $title = $item['title'] !== '' ? $item['title'] : 'Step ' . $num;
+            $html .= '<li class="kc-step-item" data-step-number="' . $num . '">';
+            $html .= '<div class="kc-step-header"><span class="kc-step-badge">' . $num . '</span><h4 class="kc-step-title">' . Html::escape($title) . '</h4></div>';
+            $html .= '<div class="kc-step-body">' . $item['content'] . '</div>';
+            $html .= '</li>';
         }
-        $html[] = '</div>';
-        return implode("\n", $html);
+        $html .= '</ol>';
+
+        return $html;
     }
 }

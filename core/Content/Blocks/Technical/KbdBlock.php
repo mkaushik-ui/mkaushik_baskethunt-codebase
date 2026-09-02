@@ -4,12 +4,11 @@ declare(strict_types=1);
 namespace SOI\Core\Content\Blocks\Technical;
 
 use SOI\Core\Content\Blocks\AbstractBlock;
+use SOI\Core\Content\Contracts\ProviderMetadataInterface;
+use SOI\Core\Content\Html;
 use SOI\Core\Content\RenderContext;
 
-/**
- * Task T5: Keyboard Key Block Provider (Skeleton).
- */
-class KbdBlock extends AbstractBlock
+class KbdBlock extends AbstractBlock implements ProviderMetadataInterface
 {
     public function type(): string
     {
@@ -21,9 +20,42 @@ class KbdBlock extends AbstractBlock
         return 'Keyboard Shortcut';
     }
 
-    public function category(): string
+    public function group(): string
     {
         return 'technical';
+    }
+
+    public function description(): string
+    {
+        return 'Keyboard key sequence shortcut';
+    }
+
+    public function keywords(): string
+    {
+        return 'kbd key shortcut keypress keyboard hotkey';
+    }
+
+    public function icon(): string
+    {
+        return '⌨️';
+    }
+
+    public function editorType(): string
+    {
+        return 'kbd';
+    }
+
+    public function data(): array
+    {
+        return $this->defaultData();
+    }
+
+    public function defaultData(): array
+    {
+        return [
+            'keys' => ['Ctrl', 'Shift', 'P'],
+            'description' => 'Open command palette',
+        ];
     }
 
     public function sanitize(array $data): array
@@ -31,23 +63,42 @@ class KbdBlock extends AbstractBlock
         $rawKeys = is_array($data['keys'] ?? null) ? $data['keys'] : [];
         $keys = [];
         foreach ($rawKeys as $k) {
-            $keys[] = $this->text($k, 20);
+            $keyText = Html::plainText((string) $k);
+            if ($keyText !== '') {
+                $keys[] = Html::clampText($keyText, 30);
+            }
         }
         return [
             'keys' => $keys,
-            'description' => $this->inline($data['description'] ?? ''),
+            'description' => Html::plainText(Html::clampText((string) ($data['description'] ?? ''), 300)),
         ];
+    }
+
+    public function validate(array $data): array
+    {
+        return [];
     }
 
     public function render(array $block, RenderContext $ctx): string
     {
-        $keys = (array)($block['data']['keys'] ?? []);
-        $desc = (string)($block['data']['description'] ?? '');
-        $kbdHtml = [];
-        foreach ($keys as $key) {
-            $kEsc = htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8');
-            $kbdHtml[] = "<kbd class=\"kc-kbd\">{$kEsc}</kbd>";
+        $d = $this->sanitize($block['data'] ?? []);
+        $keys = $d['keys'];
+        $desc = $d['description'];
+
+        $blockId = isset($block['id']) ? Html::escape((string) $block['id']) : '';
+        $dataAttr = $blockId !== '' ? ' data-block-id="' . $blockId . '"' : '';
+
+        $html = '<span class="kc-block kc-block-kbd kc-kbd-seq"' . $dataAttr . '>';
+        $kbdParts = [];
+        foreach ($keys as $k) {
+            $kbdParts[] = '<kbd class="kc-kbd">' . Html::escape($k) . '</kbd>';
         }
-        return "<span class=\"kc-kbd-seq\">" . implode(' + ', $kbdHtml) . "</span> <span class=\"kc-kbd-desc\">{$desc}</span>";
+        $html .= implode(' + ', $kbdParts);
+        if ($desc !== '') {
+            $html .= ' <span class="kc-kbd-desc">' . Html::escape($desc) . '</span>';
+        }
+        $html .= '</span>';
+
+        return $html;
     }
 }
