@@ -33,7 +33,7 @@
         border: 1px solid #e2e8f0;
         border-radius: 8px;
         background: #ffffff;
-        padding: 1rem;
+        padding: 1rem 1.25rem;
         margin: 0.75rem 0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -63,13 +63,14 @@
       }
       .kc-accordion-tool-row {
         display: flex;
-        gap: 0.75rem;
+        gap: 0.85rem;
         align-items: flex-start;
-        padding: 0.75rem;
+        padding: 0.85rem;
         background: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 6px;
+        border-radius: 8px;
         position: relative;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
       }
       .kc-accordion-tool-indicator {
         width: 28px;
@@ -99,18 +100,19 @@
       .kc-accordion-tool-input-title {
         flex: 1 1 auto;
         box-sizing: border-box;
-        padding: 0.45rem 0.6rem;
-        font-size: 0.92rem;
+        padding: 0.5rem 0.65rem;
+        font-size: 0.96rem;
         font-weight: 600;
         border: 1px solid #cbd5e1;
-        border-radius: 4px;
+        border-radius: 6px;
         color: #1e293b;
         background: #ffffff;
         outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
       .kc-accordion-tool-input-title:focus {
         border-color: #7c3aed;
-        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+        box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
       }
       .kc-accordion-tool-toggle-label {
         display: inline-flex;

@@ -33,7 +33,7 @@
         border: 1px solid #e2e8f0;
         border-radius: 8px;
         background: #ffffff;
-        padding: 1rem;
+        padding: 1rem 1.25rem;
         margin: 0.75rem 0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -63,49 +63,52 @@
       }
       .kc-steps-tool-row {
         display: flex;
-        gap: 0.75rem;
+        gap: 0.85rem;
         align-items: flex-start;
-        padding: 0.75rem;
+        padding: 0.85rem;
         background: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 6px;
+        border-radius: 8px;
         position: relative;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
       }
       .kc-steps-tool-index {
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
-        background: #0284c7;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
         color: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.82rem;
-        font-weight: 700;
+        font-size: 0.95rem;
+        font-weight: 800;
         flex-shrink: 0;
-        margin-top: 0.2rem;
+        margin-top: 0.1rem;
+        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
       }
       .kc-steps-tool-fields {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column;
-        gap: 0.4rem;
+        gap: 0.45rem;
       }
       .kc-steps-tool-input-title {
         width: 100%;
         box-sizing: border-box;
-        padding: 0.45rem 0.6rem;
-        font-size: 0.92rem;
-        font-weight: 600;
+        padding: 0.5rem 0.65rem;
+        font-size: 1rem;
+        font-weight: 700;
         border: 1px solid #cbd5e1;
-        border-radius: 4px;
+        border-radius: 6px;
         color: #1e293b;
         background: #ffffff;
         outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
       .kc-steps-tool-input-title:focus {
-        border-color: #0284c7;
-        box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
       }
       .kc-steps-tool-input-content {
         width: 100%;
