@@ -33,6 +33,6 @@ class DividerBlock extends AbstractBlock
 
     public function render(array $block, RenderContext $ctx): string
     {
-        return '<hr class="kc-divider" />';
+        return '<hr class="kc-divider-line" />';
     }
 }

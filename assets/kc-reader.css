@@ -1,0 +1,79 @@
+/**
+ * SOI Knowledge Center — Public Reader & Preview Stylesheet
+ * Location: assets/kc-reader.css
+ *
+ * Implements [EUX-09] Document Line Spacing Typography (Default 1.15)
+ * and [EUX-12] Published Reader Layout Presets (Standard, Wide, Full-width).
+ */
+
+:root {
+  --kc-reader-line-height: 1.15;
+}
+
+/* Base reader typography */
+.kc-reader-content,
+.entry-content,
+.kc-document-body,
+.kc-preview-frame {
+  line-height: 1.15;
+  color: #1e293b;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+}
+
+.kc-reader-content p,
+.entry-content p,
+.kc-document-body p,
+.kc-preview-frame p {
+  line-height: 1.15;
+  margin-bottom: 0.75rem;
+}
+
+/* --- EUX-12 Reader View Layout Presets --- */
+.kc-layout-standard,
+.kc-layout-standard .entry-content,
+.entry-content.kc-layout-standard,
+article.kc-layout-standard {
+  max-width: 820px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
+}
+
+.kc-layout-wide,
+.kc-layout-wide .entry-content,
+.entry-content.kc-layout-wide,
+article.kc-layout-wide {
+  max-width: 1140px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
+}
+
+.kc-layout-full,
+.kc-layout-full .entry-content,
+.entry-content.kc-layout-full,
+article.kc-layout-full {
+  max-width: 100% !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .kc-layout-standard,
+  .kc-layout-wide,
+  .kc-layout-full,
+  .entry-content.kc-layout-standard,
+  .entry-content.kc-layout-wide,
+  .entry-content.kc-layout-full,
+  article.kc-layout-standard,
+  article.kc-layout-wide,
+  article.kc-layout-full {
+    max-width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
