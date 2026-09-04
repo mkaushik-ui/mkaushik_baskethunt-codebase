@@ -17,7 +17,7 @@ This log records the step-by-step integration of the 12 Editor UX Task ZIPs (`EU
 | Task ID | Task Name | Status | Passing Tests | Checkpoint Tag | Notes / Conflict Resolution |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Baseline** | Initial Codebase Freeze | COMPLETED | 250 / 253 | `checkpoint/00-baseline` | Baseline established cleanly |
-| **EUX-01** | Divider Line Block | PENDING | - | - | - |
+| **EUX-01** | Divider Line Block | INTEGRATED | 250 / 253 | `checkpoint/001-EUX-01` | Integrated successfully without test regressions. |
 | **EUX-02** | Text Format & Heading Replacement | PENDING | - | - | - |
 | **EUX-03** | Image Component | PENDING | - | - | - |
 | **EUX-04** | File Component | PENDING | - | - | - |
