@@ -23,7 +23,7 @@ This log records the step-by-step integration of the 12 Editor UX Task ZIPs (`EU
 | **EUX-04** | File Component | INTEGRATED | 250 / 253 | `checkpoint/004-EUX-04` | Integrated successfully without test regressions. |
 | **EUX-05** | Drag/Drop Label & Hint | INTEGRATED | 250 / 253 | `checkpoint/005-EUX-05` | Integrated successfully without test regressions. |
 | **EUX-06** | Formatting Ribbon & Buttons | INTEGRATED | 250 / 253 | `checkpoint/006-EUX-06` | Integrated successfully without test regressions. |
-| **EUX-07** | Sidebar Resizing & Canvas | PENDING | - | - | - |
+| **EUX-07** | Sidebar Resizing & Canvas | INTEGRATED | 250 / 253 | `checkpoint/007-EUX-07` | Integrated successfully without test regressions. |
 | **EUX-08** | Enterprise Components | PENDING | - | - | - |
 | **EUX-09** | Line Spacing 1.15 & Typography | PENDING | - | - | - |
 | **EUX-10** | Ribbon Highlight / Inline Code | PENDING | - | - | - |
