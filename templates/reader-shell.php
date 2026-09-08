@@ -58,6 +58,8 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
   <?php if (!empty($document['meta_desc'])): ?>
     <meta name="description" content="<?= esc($document['meta_desc']) ?>">
   <?php endif; ?>
+  <!-- Workstream C: Canonical Block Stylesheet & Reader Styles -->
+  <link rel="stylesheet" href="<?= esc($publicPrefix) ?>/assets/kc-blocks.css">
   <link rel="stylesheet" href="<?= esc($publicPrefix) ?>/assets/kc-reader.css">
   <style>
     /* Reader Shell Foundation Styling */
@@ -373,7 +375,8 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
     </main>
   </div>
 
-  <!-- Client-side Reader Behavior -->
+  <!-- Workstream C: Client-side Block Interactivity & Reader Navigation Shell -->
+  <script src="<?= esc($publicPrefix) ?>/assets/kc-public.js"></script>
   <script src="<?= esc($publicPrefix) ?>/assets/kc-reader.js"></script>
 </body>
 </html>
