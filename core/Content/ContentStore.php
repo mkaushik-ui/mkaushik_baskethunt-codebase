@@ -39,7 +39,31 @@ final class ContentStore
     public static function find(string $entity, int $id): ?array
     {
         $table = Database::prefix(self::tableFor($entity));
-        return Database::selectOne("SELECT * FROM `$table` WHERE id = ? LIMIT 1", [$id]);
+        $record = Database::selectOne("SELECT * FROM `$table` WHERE id = ? LIMIT 1", [$id]);
+        if ($record) {
+            if (!isset($record['space_id'])) {
+                $record['space_id'] = 0;
+            }
+            if (!isset($record['section_id'])) {
+                $record['section_id'] = 0;
+            }
+            if (!isset($record['doc_version'])) {
+                $record['doc_version'] = 'v1.0';
+            }
+            if ((int) $record['space_id'] === 0 && class_exists(\SOI\Core\Spaces\SpaceSchema::class)) {
+                try {
+                    $docTable = \SOI\Core\Spaces\SpaceSchema::TABLE_DOCUMENTS;
+                    $assigned = Database::selectOne("SELECT space_id, section_id FROM {$docTable} WHERE document_id = ? AND document_type = ? LIMIT 1", [$id, $entity]);
+                    if ($assigned) {
+                        $record['space_id'] = (int) $assigned['space_id'];
+                        $record['section_id'] = (int) $assigned['section_id'];
+                    }
+                } catch (\Throwable $e) {
+                    // Ignore if table not created yet
+                }
+            }
+        }
+        return $record;
     }
 
     /**
@@ -73,6 +97,10 @@ final class ContentStore
         $slug = function_exists('slugify') ? slugify($slugSource) : preg_replace('/[^a-z0-9\-]/', '-', strtolower($slugSource));
         $slug = is_string($slug) && $slug !== '' ? $slug : 'document';
 
+        $spaceId = isset($fields['space_id']) ? (int) $fields['space_id'] : 0;
+        $sectionId = isset($fields['section_id']) ? (int) $fields['section_id'] : 0;
+        $docVersion = isset($fields['doc_version']) && trim((string) $fields['doc_version']) !== '' ? trim((string) $fields['doc_version']) : 'v1.0';
+
         $row = [
             'title' => $title,
             'slug' => $slug,
@@ -81,6 +109,9 @@ final class ContentStore
             'editor_format' => EditorSchema::FORMAT_STRUCTURED,
             'schema_version' => EditorSchema::SCHEMA_VERSION,
             'status' => $status,
+            'space_id' => $spaceId,
+            'section_id' => $sectionId,
+            'doc_version' => $docVersion,
             'meta_title' => trim((string) ($fields['meta_title'] ?? '')),
             'meta_desc' => trim((string) ($fields['meta_desc'] ?? '')),
         ];
@@ -116,6 +147,19 @@ final class ContentStore
 
         if ($entity === 'post') {
             self::syncPostCategories($id, $fields['categories'] ?? []);
+        }
+
+        // Synchronize with soi_space_documents if Space taxonomy is active
+        if (class_exists(\SOI\Core\Spaces\TaxonomyService::class)) {
+            try {
+                if ($spaceId > 0) {
+                    \SOI\Core\Spaces\TaxonomyService::instance()->assignDocument($spaceId, $sectionId, $id, $entity);
+                } else {
+                    \SOI\Core\Spaces\TaxonomyService::instance()->removeDocument(0, $id, $entity);
+                }
+            } catch (\Throwable $e) {
+                // Non-fatal if taxonomy sync is bypassed
+            }
         }
 
         $record = self::find($entity, $id);
@@ -192,11 +236,18 @@ final class ContentStore
             $status = 'draft';
         }
 
+        $spaceId = isset($fields['space_id']) ? (int) $fields['space_id'] : 0;
+        $sectionId = isset($fields['section_id']) ? (int) $fields['section_id'] : 0;
+        $docVersion = isset($fields['doc_version']) && trim((string) $fields['doc_version']) !== '' ? trim((string) $fields['doc_version']) : 'v1.0';
+
         $row = [
             'title' => $title,
             'slug' => $slug,
             'content' => Html::sanitizeLegacy($html),
             'status' => $status,
+            'space_id' => $spaceId,
+            'section_id' => $sectionId,
+            'doc_version' => $docVersion,
             'meta_title' => trim((string) ($fields['meta_title'] ?? '')),
             'meta_desc' => trim((string) ($fields['meta_desc'] ?? '')),
             'editor_format' => EditorSchema::FORMAT_LEGACY,
@@ -218,6 +269,20 @@ final class ContentStore
         if ($entity === 'post') {
             self::syncPostCategories($id, $fields['categories'] ?? []);
         }
+
+        // Synchronize with soi_space_documents if Space taxonomy is active
+        if (class_exists(\SOI\Core\Spaces\TaxonomyService::class)) {
+            try {
+                if ($spaceId > 0) {
+                    \SOI\Core\Spaces\TaxonomyService::instance()->assignDocument($spaceId, $sectionId, $id, $entity);
+                } else {
+                    \SOI\Core\Spaces\TaxonomyService::instance()->removeDocument(0, $id, $entity);
+                }
+            } catch (\Throwable $e) {
+                // Non-fatal
+            }
+        }
+
         $record = self::find($entity, $id);
         if (!$record) {
             throw new DocumentException('Document could not be reloaded after save.');

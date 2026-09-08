@@ -41,6 +41,10 @@ class Database {
         return self::$pdo !== null;
     }
 
+    public static function setPdo(?\PDO $pdo): void {
+        self::$pdo = $pdo;
+    }
+
     public static function pdo(): \PDO {
         if (!self::$pdo) {
             throw new \RuntimeException('Database not connected.');

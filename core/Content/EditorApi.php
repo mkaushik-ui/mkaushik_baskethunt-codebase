@@ -6,10 +6,12 @@ namespace SOI\Core\Content;
 use SOI\Core\Auth;
 use SOI\Core\Cache;
 use SOI\Core\Database;
+use SOI\Core\Spaces\KnowledgeSpaceService;
+use SOI\Core\Spaces\TaxonomyService;
 
 /**
  * Authenticated JSON API for the structured editor (1.1.0).
- * Handles save, autosave, preview, media, revisions, templates, patterns, and reusable blocks.
+ * Handles save, autosave, preview, media, revisions, templates, patterns, reusable blocks, and space taxonomy.
  */
 final class EditorApi
 {
@@ -27,12 +29,16 @@ final class EditorApi
         EditorSchema::ensure();
 
         $payload = self::payload();
-        $csrf = (string) ($payload['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
-        if (!Auth::verifyCsrf($csrf)) {
+        $action = (string) ($payload['_action'] ?? $_GET['action'] ?? '');
+        $csrf = (string) ($payload['_csrf'] ?? $_GET['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+
+        $isReadOnly = in_array($action, ['spaces_list', 'sections_list', 'templates_list', 'patterns_list', 'media_list', 'history'], true)
+            && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET');
+
+        if (!$isReadOnly && !Auth::verifyCsrf($csrf)) {
             self::respond(403, ['ok' => false, 'error' => 'CSRF check failed.']);
         }
 
-        $action = (string) ($payload['_action'] ?? $_GET['action'] ?? '');
         try {
             match ($action) {
                 'save', 'autosave' => self::save($payload, $action === 'autosave'),
@@ -48,6 +54,8 @@ final class EditorApi
                 'reusable_save' => self::reusableSave($payload),
                 'reusable_delete' => self::reusableDelete($payload),
                 'convert_legacy' => self::convertLegacy($payload),
+                'spaces_list' => self::spacesList($payload),
+                'sections_list' => self::sectionsList($payload),
                 default => self::respond(400, ['ok' => false, 'error' => 'Unknown editor action.']),
             };
         } catch (DocumentException $e) {
@@ -245,6 +253,52 @@ final class EditorApi
         self::respond(200, ['ok' => true, 'items' => $items]);
     }
 
+    private static function spacesList(array $payload): void
+    {
+        if (!class_exists(KnowledgeSpaceService::class)) {
+            self::respond(200, ['ok' => true, 'spaces' => []]);
+        }
+        $spaceService = KnowledgeSpaceService::instance();
+        $spaces = $spaceService->listSpaces();
+        $items = [];
+        foreach ($spaces as $s) {
+            $items[] = [
+                'id' => (int) $s['id'],
+                'title' => (string) $s['title'],
+                'slug' => (string) $s['slug'],
+                'type' => (string) ($s['type'] ?? 'generaldocs'),
+                'status' => (string) ($s['status'] ?? 'published'),
+                'visibility' => (string) ($s['visibility'] ?? 'public'),
+            ];
+        }
+        self::respond(200, ['ok' => true, 'spaces' => $items]);
+    }
+
+    private static function sectionsList(array $payload): void
+    {
+        $spaceId = (int) ($payload['space_id'] ?? $_GET['space_id'] ?? 0);
+        if ($spaceId <= 0) {
+            self::respond(200, ['ok' => true, 'space_id' => 0, 'sections' => []]);
+        }
+        if (!class_exists(TaxonomyService::class)) {
+            self::respond(200, ['ok' => true, 'space_id' => $spaceId, 'sections' => []]);
+        }
+        $taxonomyService = TaxonomyService::instance();
+        $sections = $taxonomyService->getSectionsBySpace($spaceId);
+        $items = [];
+        foreach ($sections as $sec) {
+            $items[] = [
+                'id' => (int) $sec['id'],
+                'parent_id' => (int) ($sec['parent_id'] ?? 0),
+                'space_id' => (int) ($sec['space_id'] ?? $spaceId),
+                'title' => (string) ($sec['title'] ?? ''),
+                'slug' => (string) ($sec['slug'] ?? ''),
+                'sort_order' => (int) ($sec['sort_order'] ?? 0),
+            ];
+        }
+        self::respond(200, ['ok' => true, 'space_id' => $spaceId, 'sections' => $items]);
+    }
+
     private static function payload(): array
     {
         $raw = (string) file_get_contents('php://input');
@@ -257,9 +311,13 @@ final class EditorApi
 
     private static function respond(int $status, array $data): void
     {
-        http_response_code($status);
+        if (!headers_sent()) {
+            http_response_code($status);
+        }
         echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        exit;
+        if (!defined('SOI_TESTING')) {
+            exit;
+        }
     }
 
     private static function viewUrl(string $slug): string

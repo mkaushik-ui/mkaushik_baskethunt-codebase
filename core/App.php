@@ -8,9 +8,11 @@ class App {
     public function __construct() {
         // Load core classes
         spl_autoload_register(function (string $class) {
+            $class = ltrim($class, '\\/');
             $class = str_replace('\\', '/', $class);
             $class = str_replace('SOI/Core/', '', $class);
-            $file = SOI_ROOT . "/core/{$class}.php";
+            $root = defined('SOI_ROOT') ? SOI_ROOT : dirname(__DIR__);
+            $file = $root . "/core/{$class}.php";
             if (file_exists($file)) require_once $file;
         });
     }
@@ -144,29 +146,41 @@ class App {
         }
     }
 
-    private function resolveTemplate(string $uri, string $themeDir): array {
+    public function resolveTemplate(string $uri, string $themeDir): array {
         $uri    = trim($uri, '/');
         $vars   = [];
 
         // Home
         if ($uri === '' || $uri === '/') {
-            $homePage = Database::getOption('home_page', '');
-            if ($homePage) {
-                $prefix = Database::prefix('pages');
-                $page = Database::selectOne("SELECT * FROM `$prefix` WHERE id = ? AND status = 'published'", [$homePage]);
-                if ($page) {
-                    $vars['page'] = $page;
-                    return [$themeDir . '/page.php', $vars];
+            if (Database::isConnected()) {
+                $homePage = Database::getOption('home_page', '');
+                if ($homePage) {
+                    $prefix = Database::prefix('pages');
+                    $page = Database::selectOne("SELECT * FROM `$prefix` WHERE id = ? AND status = 'published'", [$homePage]);
+                    if ($page) {
+                        $vars['page'] = $page;
+                        return [$themeDir . '/page.php', $vars];
+                    }
                 }
             }
-            if (Blog::isEnabled()) {
+            if (Database::isConnected() && Blog::isEnabled()) {
                 return [$themeDir . '/index.php', $vars];
             }
             $landing = $themeDir . '/landing.php';
             return [file_exists($landing) ? $landing : $themeDir . '/404.php', $vars];
         }
 
-        if (Blog::isEnabled()) {
+        // Knowledge Center / Spaces Public Reader Shell (Task KS-06)
+        if ($uri === 'docs' || str_starts_with($uri, 'docs/') ||
+            $uri === 'library' || str_starts_with($uri, 'library/') ||
+            $uri === 'tech' || str_starts_with($uri, 'tech/')) {
+            $readerResult = $this->resolveReaderShellRoute($uri, $themeDir);
+            if ($readerResult !== null) {
+                return $readerResult;
+            }
+        }
+
+        if (Database::isConnected() && Blog::isEnabled()) {
             // Blog archive: /blog or /posts
             if (in_array($uri, ['blog', 'posts', 'news'])) {
                 return [$themeDir . '/archive.php', $vars];
@@ -174,9 +188,11 @@ class App {
 
             // Category: /category/{slug}
             if (preg_match('#^category/(.+)$#', $uri, $m)) {
-                $catPrefix = Database::prefix('categories');
-                $cat = Database::selectOne("SELECT * FROM `$catPrefix` WHERE slug = ?", [$m[1]]);
-                $vars['category'] = $cat;
+                if (Database::isConnected()) {
+                    $catPrefix = Database::prefix('categories');
+                    $cat = Database::selectOne("SELECT * FROM `$catPrefix` WHERE slug = ?", [$m[1]]);
+                    $vars['category'] = $cat;
+                }
                 return [$themeDir . '/archive.php', $vars];
             }
         } elseif (in_array($uri, ['blog', 'posts', 'news']) || preg_match('#^category/(.+)$#', $uri)) {
@@ -185,15 +201,17 @@ class App {
         }
 
         // Try as a Page slug
-        $prefix = Database::prefix('pages');
-        $page = Database::selectOne("SELECT * FROM `$prefix` WHERE slug = ? AND status = 'published'", [$uri]);
-        if ($page) {
-            $vars['page'] = $page;
-            return [$themeDir . '/page.php', $vars];
+        if (Database::isConnected()) {
+            $prefix = Database::prefix('pages');
+            $page = Database::selectOne("SELECT * FROM `$prefix` WHERE slug = ? AND status = 'published'", [$uri]);
+            if ($page) {
+                $vars['page'] = $page;
+                return [$themeDir . '/page.php', $vars];
+            }
         }
 
         // Try as a Post slug (blog module only)
-        if (Blog::isEnabled()) {
+        if (Database::isConnected() && Blog::isEnabled()) {
             $postPrefix = Database::prefix('posts');
             $post = Database::selectOne("SELECT * FROM `$postPrefix` WHERE slug = ? AND status = 'published'", [$uri]);
             if ($post) {
@@ -211,6 +229,158 @@ class App {
         // 404
         http_response_code(404);
         return [$themeDir . '/404.php', $vars];
+    }
+
+    /**
+     * Resolve dynamic public reader shell routes (Task KS-06).
+     *
+     * Patterns:
+     * - /docs
+     * - /docs/{section}/{slug}
+     * - /library/{library-slug}
+     * - /library/{library-slug}/{section}/{slug}
+     * - /tech/{product-slug}
+     * - /tech/{product-slug}/{section}/{slug}
+     *
+     * @param string $uri Relative request URI
+     * @param string $themeDir Current active theme directory
+     * @return array{0:string, 1:array<string,mixed>} Template file path and variable bindings
+     */
+    public function resolveReaderShellRoute(string $uri, string $themeDir): array {
+        $parts = explode('/', trim($uri, '/'));
+        $prefix = strtolower($parts[0] ?? '');
+        $vars = [];
+
+        $spaceType = null;
+        $spaceSlug = null;
+        $sectionSlug = null;
+        $docSlug = null;
+
+        if ($prefix === 'docs') {
+            $spaceType = 'docs';
+            $spaceSlug = 'docs';
+            if (count($parts) === 1) {
+                // /docs
+            } elseif (count($parts) === 3) {
+                // /docs/{section}/{slug}
+                $sectionSlug = $parts[1];
+                $docSlug = $parts[2];
+            } else {
+                // Invalid segment count for /docs route
+                http_response_code(404);
+                return [$themeDir . '/404.php', $vars];
+            }
+        } elseif ($prefix === 'library') {
+            $spaceType = 'library';
+            if (count($parts) === 2) {
+                // /library/{library-slug}
+                $spaceSlug = $parts[1];
+            } elseif (count($parts) === 4) {
+                // /library/{library-slug}/{section}/{slug}
+                $spaceSlug = $parts[1];
+                $sectionSlug = $parts[2];
+                $docSlug = $parts[3];
+            } else {
+                // Invalid segment count for /library route
+                http_response_code(404);
+                return [$themeDir . '/404.php', $vars];
+            }
+        } elseif ($prefix === 'tech') {
+            $spaceType = 'tech';
+            if (count($parts) === 2) {
+                // /tech/{product-slug}
+                $spaceSlug = $parts[1];
+            } elseif (count($parts) === 4) {
+                // /tech/{product-slug}/{section}/{slug}
+                $spaceSlug = $parts[1];
+                $sectionSlug = $parts[2];
+                $docSlug = $parts[3];
+            } else {
+                // Invalid segment count for /tech route
+                http_response_code(404);
+                return [$themeDir . '/404.php', $vars];
+            }
+        } else {
+            http_response_code(404);
+            return [$themeDir . '/404.php', $vars];
+        }
+
+        // Validate and normalize slug segments to prevent path traversal and injection
+        $validateSlug = static function (?string $slug): bool {
+            if ($slug === null) {
+                return true;
+            }
+            return (bool) preg_match('/^[a-zA-Z0-9_\-]+$/', $slug);
+        };
+
+        if (!$validateSlug($spaceSlug) || !$validateSlug($sectionSlug) || !$validateSlug($docSlug)) {
+            http_response_code(404);
+            return [$themeDir . '/404.php', $vars];
+        }
+
+        // 1. Resolve Space
+        $space = \SOI\Core\Spaces\SpaceDocumentService::findSpace($spaceType, (string)$spaceSlug);
+        if (!$space || ($space['status'] ?? '') !== 'published') {
+            http_response_code(404);
+            return [$themeDir . '/404.php', $vars];
+        }
+
+        $spaceId = (int)$space['id'];
+
+        // 2. Resolve Document & Section
+        $section = null;
+        $document = null;
+
+        if ($docSlug !== null && $sectionSlug !== null) {
+            // Verify section exists and belongs to the resolved space
+            $section = \SOI\Core\Spaces\SpaceDocumentService::findSectionBySlug($spaceId, $sectionSlug);
+            if (!$section) {
+                http_response_code(404);
+                return [$themeDir . '/404.php', $vars];
+            }
+
+            // Resolve document strictly by slug and space ID (cross-space isolation)
+            $document = \SOI\Core\Spaces\SpaceDocumentService::findDocumentBySlugAndSpace($docSlug, $spaceId, $sectionSlug);
+            if (!$document || ($document['status'] ?? '') !== 'published') {
+                http_response_code(404);
+                return [$themeDir . '/404.php', $vars];
+            }
+        } else {
+            // Space landing view: resolve default/landing document
+            $document = \SOI\Core\Spaces\SpaceDocumentService::findLandingDocument($spaceId);
+            if ($document && !empty($document['section_id'])) {
+                $section = [
+                    'id' => $document['section_id'],
+                    'slug' => $document['section_slug'] ?? '',
+                    'title' => $document['section_title'] ?? ''
+                ];
+            }
+        }
+
+        // 3. Build Navigation Tree
+        $tree = \SOI\Core\Spaces\TaxonomyService::instance()->buildNavigationTree($spaceId);
+        $sections = $tree['sections'] ?? $tree;
+
+        // 4. Build Breadcrumbs Hierarchy
+        $breadcrumbs = \SOI\Core\Spaces\SpaceDocumentService::buildBreadcrumbs($space, $section, $document);
+
+        // 5. Expose variables
+        $vars['space'] = $space;
+        $vars['sections'] = $sections;
+        $vars['document'] = $document;
+        $vars['breadcrumbs'] = $breadcrumbs;
+        $vars['activeSection'] = $sectionSlug ?? ($document['section_slug'] ?? '');
+        $vars['activeSlug'] = $docSlug ?? ($document['slug'] ?? '');
+
+        // 6. Return Reader Shell Template
+        $rootDir = defined('SOI_ROOT') ? SOI_ROOT : dirname(__DIR__);
+        $readerTemplate = $rootDir . '/templates/reader-shell.php';
+        if (file_exists($readerTemplate)) {
+            return [$readerTemplate, $vars];
+        }
+
+        $themeFallback = $themeDir . '/page.php';
+        return [file_exists($themeFallback) ? $themeFallback : ($themeDir . '/404.php'), $vars];
     }
 
     /**

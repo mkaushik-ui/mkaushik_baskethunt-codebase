@@ -45,6 +45,55 @@ $catalog = BlockRegistry::catalog($hasLegacyBlock || !$isStructured);
 $templatesList = Templates::all();
 $patternsList = Patterns::all();
 
+$availableSpaces = [];
+if (class_exists(\SOI\Core\Spaces\KnowledgeSpaceService::class)) {
+    try {
+        $availableSpaces = \SOI\Core\Spaces\KnowledgeSpaceService::instance()->listSpaces();
+    } catch (\Throwable $e) {}
+}
+
+$selectedSpaceId = (int) ($record['space_id'] ?? 0);
+$selectedSectionId = (int) ($record['section_id'] ?? 0);
+$selectedDocVersion = (string) ($record['doc_version'] ?? 'v1.0');
+
+if ($selectedSpaceId <= 0 && !empty($record['id']) && class_exists(\SOI\Core\Spaces\SpaceSchema::class)) {
+    try {
+        $docTable = \SOI\Core\Spaces\SpaceSchema::TABLE_DOCUMENTS;
+        $assigned = \SOI\Core\Database::selectOne("SELECT space_id, section_id FROM {$docTable} WHERE document_id = ? AND document_type = ? LIMIT 1", [(int) $record['id'], $entity]);
+        if ($assigned) {
+            $selectedSpaceId = (int) $assigned['space_id'];
+            $selectedSectionId = (int) $assigned['section_id'];
+        }
+    } catch (\Throwable $e) {}
+}
+
+$selectedSpaceType = '';
+$selectedSpaceSlug = '';
+foreach ($availableSpaces as $sp) {
+    if ((int) $sp['id'] === $selectedSpaceId) {
+        $selectedSpaceType = (string) ($sp['type'] ?? 'generaldocs');
+        $selectedSpaceSlug = (string) ($sp['slug'] ?? '');
+        break;
+    }
+}
+
+$availableSections = [];
+if ($selectedSpaceId > 0 && class_exists(\SOI\Core\Spaces\TaxonomyService::class)) {
+    try {
+        $availableSections = \SOI\Core\Spaces\TaxonomyService::instance()->getSectionsBySpace($selectedSpaceId);
+    } catch (\Throwable $e) {}
+}
+
+if ($selectedSpaceSlug !== '') {
+    if ($selectedSpaceType === 'tech') {
+        $liveUrl = 'kc.soi.co.in/tech/' . $selectedSpaceSlug . '/' . ltrim((string) ($record['slug'] ?? ''), '/');
+    } else {
+        $liveUrl = 'kc.soi.co.in/' . $selectedSpaceType . '/' . $selectedSpaceSlug . '/' . ltrim((string) ($record['slug'] ?? ''), '/');
+    }
+} else {
+    $liveUrl = !empty($record['slug']) ? (rtrim(SOI_HOME_URL, '/') . '/' . ltrim((string) $record['slug'], '/')) : '';
+}
+
 $config = [
     'entity' => $entity,
     'mode' => $isStructured ? 'structured' : 'legacy',
@@ -52,14 +101,18 @@ $config = [
     'apiUrl' => SOI_ADMIN_URL . '/editor-api.php',
     'uploadUrl' => SOI_ADMIN_URL . '/editor-upload.php',
     'editUrl' => SOI_ADMIN_URL . '/' . ($entity === 'post' ? 'posts.php' : 'pages.php') . '?action=edit&id=',
-    'viewUrl' => !empty($record['slug']) ? (rtrim(SOI_HOME_URL, '/') . '/' . ltrim((string) $record['slug'], '/')) : '',
+    'viewUrl' => $liveUrl,
     'autosave' => true,
     'initialData' => $editorJsData,
     'catalog' => $catalog,
     'templates' => $templatesList,
     'patterns' => $patternsList,
+    'spaceId' => $selectedSpaceId,
+    'sectionId' => $selectedSectionId,
+    'docVersion' => $selectedDocVersion,
+    'spaceType' => $selectedSpaceType,
+    'spaceSlug' => $selectedSpaceSlug,
 ];
-$liveUrl = $config['viewUrl'];
 $currentStatus = (string) ($record['status'] ?? 'draft');
 ?>
 <form method="POST" id="kc-editor" class="kc-editor kc-workspace" data-mode="<?= $isStructured ? 'structured' : 'legacy' ?>" data-left="open" data-right="open" data-left-tab="components" data-right-tab="doc" data-editor-state="loading">
@@ -141,7 +194,7 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
           <button type="button" class="kc-tool" data-inline="link" title="Hyperlink">Link</button>
           <button type="button" class="kc-tool" data-insert="image" title="Insert Image">Image</button>
           <button type="button" class="kc-tool" data-insert="quote" title="Insert Quote">Quote</button>
-          <select class="kc-tool-select" id="kc-callout-tone-select" aria-label="Insert Callout with tone">
+          <select class="kc-tool-select" id="kc-callout-tone-select" data-insert="callout" aria-label="Insert Callout with tone">
             <option value="" disabled selected>Callout...</option>
             <option value="info">Info Callout</option>
             <option value="note">Note Callout</option>
@@ -167,6 +220,7 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
           <button type="button" class="kc-tool" data-align="right" title="Align Right">Right</button>
           <button type="button" class="kc-tool" data-insert="delimiter" title="Horizontal Rule">Rule</button>
           <button type="button" class="kc-tool" data-insert="code" title="Raw Code / HTML">HTML</button>
+          <button type="button" class="kc-tool kc-toggle-left kc-ribbon-more-components" id="kc-ribbon-more-components" title="More Components">More...</button>
         </div>
       </div>
     </div>
@@ -333,7 +387,7 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
       <div class="kc-pane-tabs">
         <button type="button" class="kc-pane-tab is-active" data-right-tab="doc" aria-selected="true">Document</button>
         <button type="button" class="kc-pane-tab" data-right-tab="block" aria-selected="false">Block</button>
-        <button type="button" class="kc-pane-tab" data-right-tab="layout" aria-selected="false">Layout</button>
+        <button type="button" class="kc-pane-tab" data-right-tab="layout" data-ribbon-tab="layout" aria-selected="false">Layout</button>
         <button type="button" class="kc-pane-close" id="kc-close-right" title="Close Inspector Panel" aria-label="Close Inspector Panel">✕</button>
       </div>
 
@@ -373,6 +427,44 @@ $currentStatus = (string) ($record['status'] ?? 'draft');
             <button type="submit" class="kc-card-btn kc-card-btn-primary" id="kc-card-save-btn">Save article</button>
             <button type="button" class="kc-card-btn kc-card-btn-secondary" id="kc-card-preview-btn">Preview article</button>
             <a class="kc-card-btn kc-card-btn-secondary" id="kc-card-live-link" href="<?= $liveUrl !== '' ? esc($liveUrl) : '#' ?>" target="_blank" rel="noopener">View public article</a>
+          </div>
+        </div>
+
+        <!-- Card 2: Knowledge Space & Taxonomy Context -->
+        <div class="kc-settings-card" id="kc-space-taxonomy-card">
+          <div class="kc-card-head">
+            <strong>Space & Taxonomy</strong>
+            <span class="kc-card-badge is-published" id="kc-space-type-badge" style="font-size: 10px; display: <?= $selectedSpaceType !== '' ? 'inline-block' : 'none' ?>;"><?= esc(strtoupper($selectedSpaceType)) ?></span>
+          </div>
+
+          <div class="kc-field">
+            <label for="kc-doc-space">Knowledge Space</label>
+            <select class="kc-card-select" id="kc-doc-space" name="space_id" data-selected-space="<?= (int) $selectedSpaceId ?>">
+              <option value="0" data-type="" data-slug="">-- No Space (Global / Standalone) --</option>
+              <?php foreach ($availableSpaces as $sp): ?>
+              <option value="<?= (int) $sp['id'] ?>" data-type="<?= esc($sp['type'] ?? 'generaldocs') ?>" data-slug="<?= esc($sp['slug'] ?? '') ?>" <?= $selectedSpaceId === (int) $sp['id'] ? 'selected' : '' ?>>
+                <?= esc($sp['title']) ?> (<?= esc($sp['type']) ?>)
+              </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+
+          <div class="kc-field">
+            <label for="kc-doc-section">Section Hierarchy</label>
+            <select class="kc-card-select" id="kc-doc-section" name="section_id" data-selected-section="<?= (int) $selectedSectionId ?>">
+              <option value="0">-- Root Document (No Section) --</option>
+              <?php foreach ($availableSections as $sec): ?>
+              <option value="<?= (int) $sec['id'] ?>" data-slug="<?= esc($sec['slug'] ?? '') ?>" <?= $selectedSectionId === (int) $sec['id'] ? 'selected' : '' ?>>
+                <?= esc($sec['title']) ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+
+          <div class="kc-field" id="kc-version-field-wrap" <?= $selectedSpaceType === 'tech' ? '' : 'style="display: none;"' ?>>
+            <label for="kc-doc-version">Tech Documentation Version</label>
+            <input class="kc-card-input" id="kc-doc-version" name="doc_version" value="<?= esc($selectedDocVersion) ?>" placeholder="e.g. v1.0, v2.4, latest">
+            <small class="kc-field-help" style="color: var(--kc-text-muted, #94a3b8); font-size: 11px; margin-top: 4px; display: block;">Version tag displayed on technical documentation headers.</small>
           </div>
         </div>
 
@@ -586,9 +678,13 @@ if ($isStructured) {
 <script src="' . $asset('editor/layout/drag-drop.js') . '"></script>
 <script src="' . $asset('editor/layout/layout-inspector.js') . '"></script>
 <script src="' . $asset('editor/blocks/favorites.js') . '"></script>
+<script src="' . $asset('editor/blocks/divider.js') . '"></script>
 <script src="' . $asset('editor/blocks/callout.js') . '"></script>
 <script src="' . $asset('editor/blocks/link.js') . '"></script>
 <script src="' . $asset('editor/blocks/code.js') . '"></script>
+<script src="' . $asset('editor/blocks/quote.js') . '"></script>
+<script src="' . $asset('editor/blocks/steps.js') . '"></script>
+<script src="' . $asset('editor/blocks/accordion.js') . '"></script>
 <script src="' . $asset('editor/blocks/image.js') . '"></script>
 <script src="' . $asset('editor/blocks/file.js') . '"></script>
 <script src="' . $asset('editor/blocks/legacy.js') . '"></script>

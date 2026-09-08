@@ -19,6 +19,7 @@
           this.setBlock(block);
         });
       }
+      this.bindSpaceControls();
     }
 
     setBlock(block) {
@@ -175,6 +176,176 @@
           console.error('[InspectorShell] Block update error:', err);
         }
       }
+    }
+
+    bindSpaceControls() {
+      const spaceSelect = document.getElementById('kc-doc-space');
+      const sectionSelect = document.getElementById('kc-doc-section');
+      const versionWrap = document.getElementById('kc-version-field-wrap');
+      const versionInput = document.getElementById('kc-doc-version');
+      const slugInput = document.getElementById('kc-doc-slug');
+      const slugPreview = document.getElementById('kc-slug-preview-link');
+      const headSlugPath = document.getElementById('kc-head-slug-path');
+      const spaceBadge = document.getElementById('kc-space-type-badge');
+
+      if (!spaceSelect) return;
+
+      const cfg = global.kcEditorConfig || (function () {
+        const el = document.getElementById('kc-editor-config');
+        if (el) {
+          try { return JSON.parse(el.textContent); } catch (e) {}
+        }
+        return {};
+      })();
+
+      const apiUrl = cfg.apiUrl || 'editor-api.php';
+      const csrf = cfg.csrf || '';
+
+      const updatePermalink = () => {
+        const selectedOpt = spaceSelect.selectedIndex >= 0 ? spaceSelect.options[spaceSelect.selectedIndex] : null;
+        const spaceType = selectedOpt ? (selectedOpt.getAttribute('data-type') || '') : '';
+        const spaceSlug = selectedOpt ? (selectedOpt.getAttribute('data-slug') || '') : '';
+        const docSlug = (slugInput ? slugInput.value.trim() : '') || 'untitled';
+
+        let permalink = '';
+        if (spaceSlug) {
+          if (spaceType === 'tech') {
+            permalink = 'kc.soi.co.in/tech/' + spaceSlug + '/' + docSlug;
+          } else {
+            permalink = 'kc.soi.co.in/' + spaceType + '/' + spaceSlug + '/' + docSlug;
+          }
+        } else {
+          permalink = '/docs/' + docSlug;
+        }
+
+        if (slugPreview) {
+          slugPreview.textContent = permalink;
+        }
+        if (headSlugPath) {
+          headSlugPath.textContent = permalink;
+        }
+
+        const liveUrl = (permalink.indexOf('http') === 0 || permalink.indexOf('kc.soi.co.in') === 0)
+          ? 'https://' + permalink.replace(/^https?:\/\//, '')
+          : permalink;
+        const liveBtn = document.getElementById('kc-live-link');
+        const cardLiveBtn = document.getElementById('kc-card-live-link');
+        if (liveBtn) liveBtn.href = liveUrl;
+        if (cardLiveBtn) cardLiveBtn.href = liveUrl;
+      };
+
+      const updateVersionWrap = () => {
+        const selectedOpt = spaceSelect.selectedIndex >= 0 ? spaceSelect.options[spaceSelect.selectedIndex] : null;
+        const spaceType = selectedOpt ? (selectedOpt.getAttribute('data-type') || '') : '';
+        const isTech = spaceType.toLowerCase() === 'tech';
+
+        if (versionWrap) {
+          versionWrap.style.display = isTech ? '' : 'none';
+          versionWrap.hidden = !isTech;
+        }
+        if (spaceBadge) {
+          if (spaceType) {
+            spaceBadge.textContent = spaceType.toUpperCase();
+            spaceBadge.style.display = 'inline-block';
+          } else {
+            spaceBadge.style.display = 'none';
+          }
+        }
+      };
+
+      const fetchAndPopulateSections = async (spaceId, targetSectionId = 0) => {
+        if (!sectionSelect) return;
+        const sid = Number(spaceId);
+        if (!sid || sid <= 0) {
+          sectionSelect.innerHTML = '<option value="0">-- Root Document (No Section) --</option>';
+          sectionSelect.value = '0';
+          return;
+        }
+
+        sectionSelect.disabled = true;
+        try {
+          const fetchUrl = apiUrl + '?action=sections_list&space_id=' + encodeURIComponent(sid);
+          const res = await fetch(fetchUrl, {
+            headers: {
+              'X-CSRF-TOKEN': csrf,
+              'Accept': 'application/json'
+            }
+          });
+          const json = await res.json();
+          sectionSelect.disabled = false;
+
+          let html = '<option value="0">-- Root Document (No Section) --</option>';
+          if (json.ok && Array.isArray(json.sections)) {
+            json.sections.forEach(sec => {
+              const secId = Number(sec.id);
+              const parentId = Number(sec.parent_id || 0);
+              const indent = parentId > 0 ? '—— ' : '';
+              const selected = secId === Number(targetSectionId) ? ' selected' : '';
+              html += `<option value="${secId}" data-slug="${this.escapeHtml(sec.slug || '')}" data-parent="${parentId}"${selected}>${indent}${this.escapeHtml(sec.title || 'Untitled Section')}</option>`;
+            });
+          }
+          sectionSelect.innerHTML = html;
+          if (targetSectionId && Number(targetSectionId) > 0) {
+            sectionSelect.value = String(targetSectionId);
+          }
+        } catch (err) {
+          console.error('[InspectorShell] Failed to load sections:', err);
+          sectionSelect.disabled = false;
+          sectionSelect.innerHTML = '<option value="0">-- Root Document (No Section) --</option>';
+        }
+      };
+
+      const ensureSpacesLoaded = async () => {
+        if (spaceSelect.options.length > 1) return;
+        try {
+          const fetchUrl = apiUrl + '?action=spaces_list';
+          const res = await fetch(fetchUrl, {
+            headers: {
+              'X-CSRF-TOKEN': csrf,
+              'Accept': 'application/json'
+            }
+          });
+          const json = await res.json();
+          if (json.ok && Array.isArray(json.spaces) && json.spaces.length > 0) {
+            const currentVal = spaceSelect.getAttribute('data-selected-space') || spaceSelect.value || '0';
+            let html = '<option value="0" data-type="" data-slug="">-- No Space (Global / Standalone) --</option>';
+            json.spaces.forEach(sp => {
+              const sId = String(sp.id);
+              const selected = sId === String(currentVal) ? ' selected' : '';
+              html += `<option value="${sId}" data-type="${this.escapeHtml(sp.type || 'generaldocs')}" data-slug="${this.escapeHtml(sp.slug || '')}"${selected}>${this.escapeHtml(sp.title || '')} (${this.escapeHtml(sp.type || '')})</option>`;
+            });
+            spaceSelect.innerHTML = html;
+            spaceSelect.value = currentVal;
+            updateVersionWrap();
+            updatePermalink();
+          }
+        } catch (e) {
+          console.error('[InspectorShell] Failed to load spaces:', e);
+        }
+      };
+
+      spaceSelect.addEventListener('change', () => {
+        const spaceId = parseInt(spaceSelect.value, 10) || 0;
+        updateVersionWrap();
+        updatePermalink();
+        fetchAndPopulateSections(spaceId, 0);
+      });
+
+      if (slugInput) {
+        slugInput.addEventListener('input', () => {
+          updatePermalink();
+        });
+      }
+
+      ensureSpacesLoaded().then(() => {
+        const initialSpaceId = parseInt(spaceSelect.value, 10) || 0;
+        const initialSectionId = sectionSelect ? (parseInt(sectionSelect.getAttribute('data-selected-section'), 10) || parseInt(sectionSelect.value, 10) || 0) : 0;
+        updateVersionWrap();
+        updatePermalink();
+        if (initialSpaceId > 0 && sectionSelect && sectionSelect.options.length <= 1) {
+          fetchAndPopulateSections(initialSpaceId, initialSectionId);
+        }
+      });
     }
 
     escapeHtml(str) {
