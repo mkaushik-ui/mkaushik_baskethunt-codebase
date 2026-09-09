@@ -63,4 +63,12 @@ interface SpaceDocumentServiceInterface
      * @return array<string, mixed>|null
      */
     public function getDocumentSpace(string $documentType, int $documentId): ?array;
+
+    /**
+     * Fetch all release versions defined for a technical product (space).
+     *
+     * @param int $spaceId
+     * @return array<int, array<string, mixed>>
+     */
+    public function getSpaceVersions(int $spaceId): array;
 }

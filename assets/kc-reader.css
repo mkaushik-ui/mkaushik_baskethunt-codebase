@@ -1,35 +1,93 @@
 /**
- * SOI Knowledge Center — Public Reader & Preview Stylesheet
- * Location: assets/kc-reader.css
+ * Knowledge Center Enterprise Public Reader Stylesheet (RC-05)
  *
- * Implements [EUX-09] Document Line Spacing Typography (Default 1.15)
- * and [EUX-12] Published Reader Layout Presets (Standard, Wide, Full-width).
+ * Provides:
+ * - Light & Dark theme tokens (WCAG AA compliant, deep-slate dark palette)
+ * - Reader UI styling (header, sidebar, navigation, article, breadcrumbs, typography)
+ * - Layout Presets parity (Standard ~820px, Wide ~1140px, Full 100%)
+ * - RC-03 On This Page TOC & Scroll-Spy Rail compatibility
+ * - Accessible theme toggle button & SVG icon switching
+ * - Smooth 0.15s transitions with prefers-reduced-motion support
  */
 
-:root {
-  --kc-reader-line-height: 1.15;
+/* ==========================================================================
+   1. Theme Variables & Design Tokens
+   ========================================================================== */
+:root,
+[data-theme="light"] {
+  --kc-bg: #f8fafc;
+  --kc-surface: #ffffff;
+  --kc-border: #e2e8f0;
+  --kc-text: #0f172a;
+  --kc-muted: #64748b;
+  --kc-primary: #2563eb;
+  --kc-primary-hover: #1d4ed8;
+  --kc-primary-soft: #eff6ff;
+  --kc-sidebar-width: 290px;
+  --kc-header-height: 60px;
+  --kc-radius: 8px;
+  --kc-code-bg: #0f172a;
+  --kc-code-text: #e2e8f0;
+  --kc-code-inline-bg: #f1f5f9;
+  --kc-code-inline-text: #0f172a;
+  --kc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --kc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07);
+  --kc-table-header-bg: #f8fafc;
+  --kc-table-hover-bg: #f1f5f9;
 }
 
-/* Base reader typography */
-.kc-reader-content,
-.entry-content,
-.kc-document-body,
-.kc-preview-frame {
-  line-height: 1.15;
-  color: #1e293b;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  font-size: 1rem;
+[data-theme="dark"],
+.theme-dark {
+  --kc-bg: #0b0f19;
+  --kc-surface: #111827;
+  --kc-border: #1f2937;
+  --kc-text: #f9fafb;
+  --kc-muted: #9ca3af;
+  --kc-primary: #3b82f6;
+  --kc-primary-hover: #60a5fa;
+  --kc-primary-soft: rgba(59, 130, 246, 0.15);
+  --kc-code-bg: #030712;
+  --kc-code-text: #f3f4f6;
+  --kc-code-inline-bg: #1f2937;
+  --kc-code-inline-text: #f9fafb;
+  --kc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --kc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+  --kc-table-header-bg: #1f2937;
+  --kc-table-hover-bg: #1e293b;
 }
 
-.kc-reader-content p,
-.entry-content p,
-.kc-document-body p,
-.kc-preview-frame p {
-  line-height: 1.15;
-  margin-bottom: 0.75rem;
+/* Base resets & transitions */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-/* --- EUX-12 Reader View Layout Presets --- */
+body.kc-reader-body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--kc-bg);
+  color: var(--kc-text);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+a {
+  color: var(--kc-primary);
+  text-decoration: none;
+  transition: color 0.15s ease-in-out;
+}
+
+a:hover {
+  color: var(--kc-primary-hover);
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   2. Layout Presets (EUX-12 Parity)
+   ========================================================================== */
 .kc-layout-standard,
 .kc-layout-standard .entry-content,
 .entry-content.kc-layout-standard,
@@ -76,4 +134,554 @@ article.kc-layout-full {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
+}
+
+/* ==========================================================================
+   3. Top Navigation Bar & Accessible Theme Toggle
+   ========================================================================== */
+.kc-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--kc-header-height);
+  background: var(--kc-surface);
+  border-bottom: 1px solid var(--kc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.kc-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--kc-text);
+}
+
+.kc-brand-link {
+  color: var(--kc-text);
+  text-decoration: none;
+}
+
+.kc-brand-link:hover {
+  text-decoration: none;
+  color: var(--kc-primary);
+}
+
+.kc-badge-type {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  background: var(--kc-primary-soft);
+  color: var(--kc-primary);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.kc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.kc-home-link {
+  font-size: 0.875rem;
+  color: var(--kc-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: color 0.15s ease-in-out;
+}
+
+.kc-home-link:hover {
+  color: var(--kc-primary);
+  text-decoration: none;
+}
+
+/* Theme Toggle Button */
+.kc-theme-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--kc-border);
+  color: var(--kc-text);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out, transform 0.15s ease-in-out;
+}
+
+.kc-theme-toggle:hover {
+  background: var(--kc-primary-soft);
+  color: var(--kc-primary);
+  border-color: var(--kc-primary);
+}
+
+.kc-theme-toggle:focus-visible {
+  outline: 2px solid var(--kc-primary);
+  outline-offset: 2px;
+}
+
+.kc-theme-toggle svg {
+  display: block;
+  pointer-events: none;
+  transition: transform 0.15s ease-in-out, opacity 0.15s ease-in-out;
+}
+
+/* Icon visibility */
+.kc-icon-sun {
+  display: none;
+}
+
+.kc-icon-moon {
+  display: block;
+}
+
+[data-theme="dark"] .kc-icon-sun,
+.theme-dark .kc-icon-sun {
+  display: block;
+}
+
+[data-theme="dark"] .kc-icon-moon,
+.theme-dark .kc-icon-moon {
+  display: none;
+}
+
+.kc-mobile-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--kc-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--kc-text);
+}
+
+/* ==========================================================================
+   4. Sidebar Navigation Tree
+   ========================================================================== */
+.kc-layout {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.kc-sidebar {
+  width: var(--kc-sidebar-width);
+  flex-shrink: 0;
+  background: var(--kc-surface);
+  border-right: 1px solid var(--kc-border);
+  overflow-y: auto;
+  height: calc(100vh - var(--kc-header-height));
+  position: sticky;
+  top: var(--kc-header-height);
+  padding: 1.5rem 1rem;
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.kc-nav-group {
+  margin-bottom: 1.5rem;
+}
+
+.kc-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--kc-muted);
+  margin-bottom: 0.6rem;
+  padding-left: 0.75rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+.kc-nav-list {
+  list-style: none;
+}
+
+.kc-nav-item {
+  margin-bottom: 0.2rem;
+}
+
+.kc-nav-link {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--kc-radius);
+  color: var(--kc-text);
+  opacity: 0.88;
+  font-size: 0.925rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.kc-nav-link:hover {
+  background: var(--kc-primary-soft);
+  color: var(--kc-primary);
+  opacity: 1;
+  text-decoration: none;
+}
+
+.kc-nav-item.is-active .kc-nav-link,
+.kc-nav-link.is-active {
+  background: var(--kc-primary-soft);
+  color: var(--kc-primary);
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* ==========================================================================
+   5. Main Reader Area & Article Container
+   ========================================================================== */
+.kc-main {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem 3rem 4rem 3rem;
+  background-color: var(--kc-bg);
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* Breadcrumbs */
+.kc-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--kc-muted);
+  margin-bottom: 1.5rem;
+}
+
+.kc-breadcrumb-sep {
+  color: var(--kc-muted);
+  font-size: 0.875rem;
+  user-select: none;
+  opacity: 0.6;
+}
+
+.kc-breadcrumb-link {
+  color: var(--kc-muted);
+  text-decoration: none;
+  transition: color 0.15s ease-in-out;
+}
+
+.kc-breadcrumb-link:hover {
+  color: var(--kc-primary);
+  text-decoration: underline;
+}
+
+.kc-breadcrumb-current {
+  color: var(--kc-text);
+  font-weight: 600;
+}
+
+/* Article Shell */
+article.kc-article {
+  background: var(--kc-surface);
+  border-radius: 12px;
+  border: 1px solid var(--kc-border);
+  padding: 2.5rem 3rem;
+  box-shadow: var(--kc-shadow-sm);
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.kc-doc-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--kc-border);
+  transition: border-color 0.15s ease-in-out;
+}
+
+.kc-doc-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--kc-text);
+}
+
+.kc-doc-meta {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--kc-muted);
+}
+
+/* Typography & Content Body */
+.entry-content {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: var(--kc-text);
+}
+
+.entry-content h1,
+.entry-content h2,
+.entry-content h3,
+.entry-content h4,
+.entry-content h5,
+.entry-content h6 {
+  color: var(--kc-text);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.entry-content h1 { font-size: 2rem; margin-top: 2.25rem; margin-bottom: 1rem; }
+.entry-content h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.8rem;
+  font-size: 1.6rem;
+  border-bottom: 1px solid var(--kc-border);
+  padding-bottom: 0.4rem;
+}
+.entry-content h3 { margin-top: 1.5rem; margin-bottom: 0.6rem; font-size: 1.3rem; }
+.entry-content h4 { margin-top: 1.25rem; margin-bottom: 0.5rem; font-size: 1.15rem; }
+
+.entry-content p {
+  margin-bottom: 1.2rem;
+}
+
+.entry-content ul,
+.entry-content ol {
+  margin-bottom: 1.2rem;
+  padding-left: 1.5rem;
+}
+
+.entry-content li {
+  margin-bottom: 0.4rem;
+}
+
+.entry-content blockquote {
+  border-left: 4px solid var(--kc-primary);
+  padding: 0.75rem 1.25rem;
+  margin: 1.5rem 0;
+  color: var(--kc-muted);
+  background: var(--kc-primary-soft);
+  border-radius: 0 var(--kc-radius) var(--kc-radius) 0;
+  font-style: italic;
+}
+
+.entry-content code:not([class*="language-"]) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  background: var(--kc-code-inline-bg);
+  color: var(--kc-code-inline-text);
+  padding: 0.2em 0.45em;
+  border-radius: 4px;
+  border: 1px solid var(--kc-border);
+}
+
+.entry-content pre {
+  margin: 1.5rem 0;
+  background: var(--kc-code-bg);
+  color: var(--kc-code-text);
+  border: 1px solid var(--kc-border);
+  border-radius: var(--kc-radius);
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.925rem;
+  line-height: 1.6;
+}
+
+.entry-content pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.entry-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+.entry-content th,
+.entry-content td {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--kc-border);
+  text-align: left;
+}
+
+.entry-content th {
+  background: var(--kc-table-header-bg);
+  font-weight: 600;
+  color: var(--kc-text);
+}
+
+.entry-content tr:hover {
+  background: var(--kc-table-hover-bg);
+}
+
+.entry-content hr {
+  border: none;
+  height: 1px;
+  background: var(--kc-border);
+  margin: 2rem 0;
+}
+
+/* ==========================================================================
+   6. RC-03 On This Page TOC & Scroll-Spy Rail Compatibility
+   ========================================================================== */
+.kc-toc,
+.kc-toc-rail,
+aside.kc-toc {
+  width: 240px;
+  flex-shrink: 0;
+  background: transparent;
+  padding: 1.5rem 1rem;
+  position: sticky;
+  top: var(--kc-header-height);
+  max-height: calc(100vh - var(--kc-header-height));
+  overflow-y: auto;
+}
+
+.kc-toc-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--kc-muted);
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  padding-left: 0.5rem;
+}
+
+.kc-toc-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  border-left: 2px solid var(--kc-border);
+}
+
+.kc-toc-item {
+  margin-bottom: 0.25rem;
+}
+
+.kc-toc-link {
+  display: block;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--kc-muted);
+  text-decoration: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  border-radius: 0 4px 4px 0;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+}
+
+.kc-toc-link:hover {
+  color: var(--kc-text);
+  text-decoration: none;
+  background: var(--kc-primary-soft);
+}
+
+.kc-toc-link.is-active,
+.kc-toc-item.is-active > .kc-toc-link {
+  color: var(--kc-primary);
+  font-weight: 600;
+  border-left-color: var(--kc-primary);
+  background: var(--kc-primary-soft);
+}
+
+/* ==========================================================================
+   7. Transitions & Responsive Adjustments
+   ========================================================================== */
+body,
+.kc-header,
+.kc-sidebar,
+article.kc-article,
+.kc-nav-link,
+.kc-theme-toggle,
+.kc-toc,
+.kc-toc-link {
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .kc-mobile-toggle {
+    display: block;
+  }
+  .kc-sidebar {
+    position: fixed;
+    left: -320px;
+    top: var(--kc-header-height);
+    z-index: 40;
+    transition: left 0.25s ease, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+  }
+  .kc-sidebar.is-open {
+    left: 0;
+  }
+  .kc-main {
+    padding: 1.5rem 1rem;
+  }
+  article.kc-article {
+    padding: 1.5rem;
+  }
+  .kc-toc,
+  .kc-toc-rail {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   8. Task RC-02 Code Copy Button & Accessibility
+   ========================================================================== */
+.kc-copy-code-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  line-height: 1.2;
+}
+
+.kc-copy-code-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.kc-copy-code-btn.is-copied {
+  background: #10b981;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.kc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

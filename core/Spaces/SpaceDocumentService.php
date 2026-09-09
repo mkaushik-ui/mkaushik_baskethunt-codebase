@@ -564,6 +564,40 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
         return $this->getDocumentSpace($documentType, $documentId);
     }
 
+    /**
+     * Fetch all release versions defined for a technical product (space).
+     *
+     * @param int $spaceId
+     * @return array<int, array<string, mixed>>
+     */
+    public function getSpaceVersions(int $spaceId): array
+    {
+        if ($spaceId <= 0) {
+            return [];
+        }
+
+        $pdo = $this->getPdo();
+        $table = SpaceSchema::TABLE_TECH_VERSIONS;
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    `version_tag`,
+                    `version_name`,
+                    `is_latest`,
+                    `is_deprecated`,
+                    `release_date`
+                FROM `{$table}`
+                WHERE `space_id` = ?
+                ORDER BY `release_date` DESC, `id` DESC
+            ");
+            $stmt->execute([$spaceId]);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     // --- Static Public Reader Shell Resolvers (KS-06) ---
 
     public static function findSpace(string $type, string $slug = '', ?\PDO $pdo = null): ?array

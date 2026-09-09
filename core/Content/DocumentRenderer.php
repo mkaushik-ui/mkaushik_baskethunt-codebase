@@ -61,23 +61,84 @@ final class DocumentRenderer
 
     /**
      * Headings collected during a render pass — used for Table of Contents (On this page).
+     * Supports structured document blocks array or raw HTML string.
      *
-     * @param array{schemaVersion?:int,blocks:list<array{id:string,type:string,data:array<string,mixed>}>} $document
+     * @param array{schemaVersion?:int,blocks?:list<array{id?:string,type?:string,data?:array<string,mixed>}>}|string $document
      * @return list<array{id:string,level:int,text:string}>
      */
-    public static function extractHeadings(array $document): array
+    public static function extractHeadings(mixed $document): array
     {
         $ctx = new RenderContext();
-        foreach ($document['blocks'] ?? [] as $block) {
-            if (!is_array($block) || ($block['type'] ?? '') !== 'heading') {
-                continue;
+
+        // 1. Structured Document (Blocks Array)
+        if (is_array($document) && isset($document['blocks']) && is_array($document['blocks'])) {
+            foreach ($document['blocks'] as $block) {
+                if (!is_array($block) || ($block['type'] ?? '') !== 'heading') {
+                    continue;
+                }
+                BlockRegistry::get('heading')->render([
+                    'id' => (string) ($block['id'] ?? ''),
+                    'type' => 'heading',
+                    'data' => is_array($block['data'] ?? null) ? $block['data'] : [],
+                ], $ctx);
             }
-            BlockRegistry::get('heading')->render([
-                'id' => (string) ($block['id'] ?? ''),
-                'type' => 'heading',
-                'data' => is_array($block['data'] ?? null) ? $block['data'] : [],
-            ], $ctx);
+            return $ctx->headings;
         }
-        return $ctx->headings;
+
+        // 2. Raw HTML string fallback
+        $html = is_string($document) ? $document : (is_array($document) && isset($document['content']) ? (string) $document['content'] : '');
+        $headings = [];
+        $usedAnchors = [];
+
+        if ($html !== '') {
+            if (preg_match_all('/<h([2-3])(?:\s+[^>]*id=["\']([^"\']+)["\'][^>]*|\s*[^>]*)>(.*?)<\/h\1>/is', $html, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $m) {
+                    $level = (int) $m[1];
+                    $existingId = trim($m[2] ?? '');
+                    $rawText = $m[3] ?? '';
+                    $clean = strip_tags($rawText);
+                    $text = html_entity_decode($clean, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    if (trim($text) === '') {
+                        continue;
+                    }
+                    $anchor = $existingId !== '' ? $existingId : self::generateUniqueAnchor($text, $usedAnchors);
+                    $usedAnchors[$anchor] = true;
+
+                    $headings[] = [
+                        'id' => $anchor,
+                        'level' => $level,
+                        'text' => $text,
+                    ];
+                }
+            }
+        }
+
+        return $headings;
+    }
+
+    /**
+     * Generate unique URL-safe anchor slug for headings.
+     *
+     * @param string $text
+     * @param array<string, bool> $usedAnchors
+     * @return string
+     */
+    public static function generateUniqueAnchor(string $text, array &$usedAnchors): string
+    {
+        $slug = strtolower(trim($text));
+        $slug = preg_replace('/[^a-z0-9\-_]+/i', '-', $slug) ?? 'heading';
+        $slug = trim($slug, '-');
+        if ($slug === '') {
+            $slug = 'heading';
+        }
+
+        $base = $slug;
+        $counter = 2;
+        while (isset($usedAnchors[$slug])) {
+            $slug = $base . '-' . $counter;
+            $counter++;
+        }
+        $usedAnchors[$slug] = true;
+        return $slug;
     }
 }

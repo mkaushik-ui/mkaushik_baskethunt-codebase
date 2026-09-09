@@ -1,9 +1,20 @@
 <?php
+declare(strict_types=1);
+
 /**
- * Public Reader Shell Template (Task KS-06)
+ * SOI Knowledge Center — Master Public Reader & Presentation Shell
+ * Location: templates/reader-shell.php
+ * Domain: kc.soi.co.in
  *
- * Renders the public reader interface with dynamic navigation tree,
- * breadcrumb hierarchy, active section highlighting, and canonical document rendering parity.
+ * Harmonized Presentation Template for Workstream C (Milestone M3):
+ * - Anti-FOUC Light/Dark theme initialization (Task RC-05)
+ * - Accessible Theme Toggle Button with Sun/Moon SVG icons (Task RC-05)
+ * - Canonical Block Stylesheet & Design System Parity (Task RC-01)
+ * - Public Tab & CodeGroup Client Interactivity (Task RC-02)
+ * - Automatic One-Click Code Copy Engine (Task RC-02)
+ * - "On This Page" Table of Contents Sticky Rail & Scroll-Spy (Task RC-03)
+ * - Technical Product Space Version Switcher & Live Search (Task RC-04)
+ * - Responsive Multi-Pane Layout (Desktop Tri-Pane, Tablet Dual-Pane, Mobile Drawer)
  *
  * @var array $space Resolved space data
  * @var array $sections Navigation tree from TaxonomyService::buildNavigationTree()
@@ -14,19 +25,22 @@
  */
 
 use SOI\Core\Content\DocumentRenderer;
+use SOI\Core\Spaces\SpaceDocumentService;
 
-$spaceName = $space['name'] ?? 'Documentation';
-$spaceSlug = $space['slug'] ?? 'docs';
-$spaceType = $space['type'] ?? 'docs';
+$spaceId   = (int) ($space['id'] ?? 0);
+$spaceName = (string) ($space['name'] ?? ($space['title'] ?? 'Documentation'));
+$spaceSlug = (string) ($space['slug'] ?? 'docs');
+$spaceType = (string) ($space['type'] ?? 'docs');
 
-$docTitle = !empty($document['title']) ? $document['title'] : $spaceName;
+$docTitle  = !empty($document['title']) ? (string) $document['title'] : $spaceName;
 $pageTitle = $docTitle . ' — ' . $spaceName;
 
-$currentSlug = $activeSlug ?? ($document['slug'] ?? '');
+$currentSlug    = $activeSlug ?? ($document['slug'] ?? '');
 $currentSection = $activeSection ?? ($document['section_slug'] ?? '');
+$currentVersion = $_GET['v'] ?? ($document['doc_version'] ?? '');
 
 // Layout preset (Standard ~820px, Wide ~1140px, Full 100%)
-$layoutPreset = $document['layout_preset'] ?? 'standard';
+$layoutPreset = (string) ($document['layout_preset'] ?? 'standard');
 if (!in_array($layoutPreset, ['standard', 'wide', 'full'], true)) {
     $layoutPreset = 'standard';
 }
@@ -40,10 +54,34 @@ if (!empty($document)) {
     } elseif (class_exists(DocumentRenderer::class)) {
         $renderedBodyHtml = DocumentRenderer::renderRecord($document, false);
     } else {
-        $renderedBodyHtml = (string)($document['content'] ?? '');
+        $renderedBodyHtml = (string) ($document['content'] ?? '');
     }
 } else {
     $renderedBodyHtml = '<div class="kc-empty-space"><p>Welcome to <strong>' . esc($spaceName) . '</strong>. Select a topic from the navigation sidebar to begin reading.</p></div>';
+}
+
+// Extract headings for Table of Contents rail (RC-03)
+$tocHeadings = [];
+if (!empty($document) && class_exists(DocumentRenderer::class)) {
+    $parsedDoc = !empty($document['body_json']) ? json_decode((string) $document['body_json'], true) : $document;
+    $rawHeadings = DocumentRenderer::extractHeadings($parsedDoc);
+    // Filter H2 and H3 for Table of Contents rail
+    foreach ($rawHeadings as $h) {
+        if (isset($h['level']) && in_array((int)$h['level'], [2, 3], true)) {
+            $tocHeadings[] = $h;
+        }
+    }
+}
+
+// Fetch versions for technical product spaces (RC-04)
+$spaceVersions = [];
+if ($spaceType === 'tech' && $spaceId > 0 && class_exists(SpaceDocumentService::class)) {
+    try {
+        $docService = new SpaceDocumentService();
+        $spaceVersions = $docService->getSpaceVersions($spaceId);
+    } catch (\Throwable $e) {
+        $spaceVersions = [];
+    }
 }
 
 $homeUrl = defined('SOI_HOME_URL') ? SOI_HOME_URL : '/';
@@ -58,231 +96,33 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
   <?php if (!empty($document['meta_desc'])): ?>
     <meta name="description" content="<?= esc($document['meta_desc']) ?>">
   <?php endif; ?>
-  <!-- Workstream C: Canonical Block Stylesheet & Reader Styles -->
+
+  <!-- Anti-FOUC Theme Initialization (RC-05) -->
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem('kc-reader-theme');
+        var theme = 'light';
+        if (savedTheme === 'dark' || savedTheme === 'light') {
+          theme = savedTheme;
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          theme = 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+        if (theme === 'dark') {
+          document.documentElement.classList.add('theme-dark');
+        } else {
+          document.documentElement.classList.remove('theme-dark');
+        }
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+
+  <!-- Canonical Block Stylesheet & Reader Layout Styles (RC-01, RC-03, RC-05) -->
   <link rel="stylesheet" href="<?= esc($publicPrefix) ?>/assets/kc-blocks.css">
   <link rel="stylesheet" href="<?= esc($publicPrefix) ?>/assets/kc-reader.css">
-  <style>
-    /* Reader Shell Foundation Styling */
-    :root {
-      --kc-bg: #f8fafc;
-      --kc-surface: #ffffff;
-      --kc-text: #0f172a;
-      --kc-muted: #64748b;
-      --kc-border: #e2e8f0;
-      --kc-primary: #2563eb;
-      --kc-primary-hover: #1d4ed8;
-      --kc-primary-soft: #eff6ff;
-      --kc-sidebar-width: 290px;
-      --kc-header-height: 60px;
-      --kc-radius: 8px;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--kc-bg);
-      color: var(--kc-text);
-      line-height: 1.6;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
-    a { color: var(--kc-primary); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    /* Top Navigation Bar */
-    .kc-header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      height: var(--kc-header-height);
-      background: var(--kc-surface);
-      border-bottom: 1px solid var(--kc-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 1.5rem;
-    }
-    .kc-brand {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-weight: 700;
-      font-size: 1.15rem;
-      color: var(--kc-text);
-    }
-    .kc-badge-type {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 0.2rem 0.5rem;
-      background: var(--kc-primary-soft);
-      color: var(--kc-primary);
-      border-radius: 4px;
-      font-weight: 600;
-    }
-    .kc-header-actions {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-    .kc-mobile-toggle {
-      display: none;
-      background: none;
-      border: 1px solid var(--kc-border);
-      border-radius: 6px;
-      padding: 0.4rem 0.6rem;
-      font-size: 1.25rem;
-      cursor: pointer;
-    }
-
-    /* Layout Structure */
-    .kc-layout {
-      display: flex;
-      flex: 1;
-      position: relative;
-    }
-
-    /* Sidebar Navigation */
-    .kc-sidebar {
-      width: var(--kc-sidebar-width);
-      flex-shrink: 0;
-      background: var(--kc-surface);
-      border-right: 1px solid var(--kc-border);
-      overflow-y: auto;
-      height: calc(100vh - var(--kc-header-height));
-      position: sticky;
-      top: var(--kc-header-height);
-      padding: 1.5rem 1rem;
-    }
-    .kc-nav-group {
-      margin-bottom: 1.5rem;
-    }
-    .kc-section-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--kc-muted);
-      margin-bottom: 0.6rem;
-      padding-left: 0.75rem;
-      font-weight: 700;
-    }
-    .kc-nav-list {
-      list-style: none;
-    }
-    .kc-nav-item {
-      margin-bottom: 0.2rem;
-    }
-    .kc-nav-link {
-      display: block;
-      padding: 0.45rem 0.75rem;
-      border-radius: var(--kc-radius);
-      color: #334155;
-      font-size: 0.925rem;
-      font-weight: 500;
-      transition: background 0.15s ease, color 0.15s ease;
-    }
-    .kc-nav-link:hover {
-      background: #f1f5f9;
-      color: var(--kc-text);
-      text-decoration: none;
-    }
-    .kc-nav-item.is-active .kc-nav-link,
-    .kc-nav-link.is-active {
-      background: var(--kc-primary-soft);
-      color: var(--kc-primary);
-      font-weight: 600;
-    }
-
-    /* Main Reader Area */
-    .kc-main {
-      flex: 1;
-      min-width: 0;
-      padding: 2rem 3rem 4rem 3rem;
-    }
-
-    /* Breadcrumbs */
-    .kc-breadcrumbs {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      font-size: 0.875rem;
-      color: var(--kc-muted);
-      margin-bottom: 1.5rem;
-    }
-    .kc-breadcrumb-sep {
-      color: #94a3b8;
-      font-size: 0.875rem;
-      user-select: none;
-    }
-    .kc-breadcrumb-current {
-      color: var(--kc-text);
-      font-weight: 600;
-    }
-
-    /* Article Content */
-    article.kc-article {
-      background: var(--kc-surface);
-      border-radius: 12px;
-      border: 1px solid var(--kc-border);
-      padding: 2.5rem 3rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    }
-    .kc-doc-header {
-      margin-bottom: 2rem;
-      padding-bottom: 1.25rem;
-      border-bottom: 1px solid var(--kc-border);
-    }
-    .kc-doc-title {
-      font-size: 2.25rem;
-      font-weight: 800;
-      letter-spacing: -0.025em;
-      line-height: 1.2;
-      color: var(--kc-text);
-    }
-    .kc-doc-meta {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
-      font-size: 0.85rem;
-      color: var(--kc-muted);
-    }
-
-    /* Content Typography & Blocks */
-    .entry-content {
-      font-size: 1.05rem;
-      line-height: 1.75;
-      color: #334155;
-    }
-    .entry-content h2 { margin-top: 2rem; margin-bottom: 0.8rem; font-size: 1.6rem; color: #0f172a; }
-    .entry-content h3 { margin-top: 1.5rem; margin-bottom: 0.6rem; font-size: 1.3rem; color: #0f172a; }
-    .entry-content p { margin-bottom: 1.2rem; }
-    .entry-content ul, .entry-content ol { margin-bottom: 1.2rem; padding-left: 1.5rem; }
-    .entry-content li { margin-bottom: 0.4rem; }
-    .entry-content blockquote {
-      border-left: 4px solid var(--kc-primary);
-      padding-left: 1rem;
-      margin: 1.5rem 0;
-      color: var(--kc-muted);
-      font-style: italic;
-    }
-
-    /* Responsive Design */
-    @media (max-width: 900px) {
-      .kc-mobile-toggle { display: block; }
-      .kc-sidebar {
-        position: fixed;
-        left: -320px;
-        top: var(--kc-header-height);
-        z-index: 40;
-        transition: left 0.25s ease;
-        box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-      }
-      .kc-sidebar.is-open { left: 0; }
-      .kc-main { padding: 1.5rem 1rem; }
-      article.kc-article { padding: 1.5rem; }
-    }
-  </style>
 </head>
 <body class="kc-reader-body">
 
@@ -293,7 +133,28 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
       <a href="<?= esc($homeUrl) ?>" class="kc-brand-link"><?= esc($spaceName) ?></a>
       <span class="kc-badge-type"><?= esc($spaceType) ?></span>
     </div>
+
     <div class="kc-header-actions">
+      <!-- Dark / Light Mode Toggle Button (RC-05) -->
+      <button class="kc-theme-toggle" id="kcThemeToggle" aria-label="Toggle dark/light theme" title="Toggle theme">
+        <!-- Sun Icon (shown in dark mode) -->
+        <svg class="kc-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <!-- Moon Icon (shown in light mode) -->
+        <svg class="kc-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
       <a href="<?= esc($homeUrl) ?>" class="kc-home-link">← Back to Site</a>
     </div>
   </header>
@@ -303,6 +164,31 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
 
     <!-- Sidebar Navigation Tree -->
     <aside class="kc-sidebar" id="kcSidebar" aria-label="Space Documentation Navigation">
+
+      <!-- Technical Space Product Version Selector (RC-04) -->
+      <?php if ($spaceType === 'tech' && !empty($spaceVersions)): ?>
+        <div class="kc-sidebar-toolbar" style="margin-bottom: 1rem;">
+          <label for="kcVersionSelect" class="kc-toolbar-label" style="display:block; margin-bottom: 0.35rem; font-size: 0.75rem; font-weight: 600; color: var(--kc-muted);">PRODUCT VERSION</label>
+          <select id="kcVersionSelect" class="kc-version-select" style="width: 100%; height: 36px; border: 1px solid var(--kc-border); border-radius: 6px; background: var(--kc-surface); color: var(--kc-text); padding: 0 0.75rem; font-size: 0.82rem; font-weight: 600;">
+            <?php foreach ($spaceVersions as $v): ?>
+              <?php 
+                $vTag = $v['version_tag'] ?? '';
+                $isSelected = ($currentVersion !== '' && strtolower($currentVersion) === strtolower($vTag)) || (empty($currentVersion) && !empty($v['is_latest']));
+              ?>
+              <option value="<?= esc($vTag) ?>" <?= $isSelected ? 'selected' : '' ?>>
+                <?= esc($v['version_name'] ?? $vTag) ?> <?= !empty($v['is_latest']) ? '(Latest)' : '' ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      <?php endif; ?>
+
+      <!-- Sidebar Quick Search & Topic Filter (RC-04) -->
+      <div class="kc-sidebar-search" style="margin-bottom: 1rem;">
+        <input type="search" id="kcSidebarSearch" placeholder="Filter topics..." style="width: 100%; height: 36px; padding: 0 0.75rem; border: 1px solid var(--kc-border); border-radius: 6px; font-size: 0.88rem; background: var(--kc-surface); color: var(--kc-text);">
+      </div>
+
+      <!-- Navigation Tree Structure -->
       <nav class="kc-nav-tree">
         <?php if (!empty($sections)): ?>
           <?php foreach ($sections as $sec): ?>
@@ -362,6 +248,9 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
               <?php if (!empty($document['section_title'])): ?>
                 <span>• in <strong><?= esc($document['section_title']) ?></strong></span>
               <?php endif; ?>
+              <?php if (!empty($document['doc_version'])): ?>
+                <span>• version <strong><?= esc($document['doc_version']) ?></strong></span>
+              <?php endif; ?>
             </div>
           <?php endif; ?>
         </header>
@@ -373,9 +262,30 @@ $publicPrefix = function_exists('soi_public_path_prefix') ? soi_public_path_pref
       </article>
 
     </main>
+
+    <!-- "On This Page" Table of Contents Sticky Rail (RC-03) -->
+    <?php if (count($tocHeadings) >= 2): ?>
+      <aside class="kc-toc" id="kcToc" aria-label="Table of Contents">
+        <div class="kc-toc-title">ON THIS PAGE</div>
+        <ul class="kc-toc-list">
+          <?php foreach ($tocHeadings as $th): ?>
+            <?php 
+              $hLevel = (int) ($th['level'] ?? 2);
+              $hIndent = $hLevel === 3 ? 'style="padding-left: 0.75rem; font-size: 0.8rem;"' : '';
+            ?>
+            <li class="kc-toc-item">
+              <a href="#<?= esc($th['id']) ?>" class="kc-toc-link" <?= $hIndent ?>>
+                <?= esc($th['text']) ?>
+              </a>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      </aside>
+    <?php endif; ?>
+
   </div>
 
-  <!-- Workstream C: Client-side Block Interactivity & Reader Navigation Shell -->
+  <!-- Client-side Public Block Interactivity & Master Reader Runtime (RC-02, RC-03, RC-04, RC-05) -->
   <script src="<?= esc($publicPrefix) ?>/assets/kc-public.js"></script>
   <script src="<?= esc($publicPrefix) ?>/assets/kc-reader.js"></script>
 </body>
