@@ -645,7 +645,7 @@ class TaxonomyService implements TaxonomyServiceInterface
      * @param string|null $activeSlug
      * @return array<string, mixed>
      */
-    public function buildNavigationTree(int $spaceId, ?int $activeDocumentId = null, ?string $activeSlug = null): array
+    public function buildNavigationTree(int $spaceId, ?int $activeDocumentId = null, ?string $activeSlug = null, ?\SOI\Core\Spaces\Audience\AudienceSubjectContext $subject = null): array
     {
         SpaceSchema::ensure($this->pdo);
 
@@ -653,6 +653,13 @@ class TaxonomyService implements TaxonomyServiceInterface
         $space = $spaceService->getSpace($spaceId);
         if ($space === null) {
             return [];
+        }
+
+        if ($subject !== null) {
+            $policyService = new \SOI\Core\Spaces\Audience\AudiencePolicyService($this->pdo);
+            if (!$policyService->canAccessSpace($space, $subject)) {
+                return [];
+            }
         }
 
         $sections = $this->getSectionsBySpace($spaceId);
@@ -785,7 +792,7 @@ class TaxonomyService implements TaxonomyServiceInterface
             }
         }
 
-        return [
+        $tree = [
             'space'            => $space,
             'sections'         => $rootSections,
             'root_documents'   => $rootDocs,
@@ -793,5 +800,12 @@ class TaxonomyService implements TaxonomyServiceInterface
             'total_sections'   => count($sections),
             'total_documents'  => count($docRows),
         ];
+
+        if ($subject !== null) {
+            $policyService = new \SOI\Core\Spaces\Audience\AudiencePolicyService($this->pdo);
+            $tree = $policyService->filterNavigationTree($tree, $subject);
+        }
+
+        return $tree;
     }
 }

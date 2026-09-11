@@ -1,0 +1,18 @@
+# Archives & Zips
+*.zip
+ZIPS/
+zips/
+
+# Task Plans & Documentation Notes
+AUDIENCE_PERMISSIONS_TASK_PLAN.md
+READER_EXPERIENCES_TASK_PLAN.md
+
+# Tests
+tests/
+
+# Local Dev & Config
+config/config.php
+storage/
+router.php
+AGENTS/
+.DS_Store

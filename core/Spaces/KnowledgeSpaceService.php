@@ -3,8 +3,17 @@ declare(strict_types=1);
 
 namespace SOI\Core\Spaces;
 
+require_once __DIR__ . '/KnowledgeSpaceServiceInterface.php';
+require_once __DIR__ . '/Audience/AudiencePolicySchema.php';
+require_once __DIR__ . '/Audience/AudiencePolicyServiceInterface.php';
+require_once __DIR__ . '/Audience/AudienceSubjectContext.php';
+require_once __DIR__ . '/Audience/AudiencePolicyService.php';
+
 use SOI\Core\Cache;
 use SOI\Core\Database;
+use SOI\Core\Spaces\Audience\AudiencePolicyService;
+use SOI\Core\Spaces\Audience\AudiencePolicyServiceInterface;
+use SOI\Core\Spaces\Audience\AudienceSubjectContext;
 
 /**
  * KnowledgeSpaceService
@@ -17,26 +26,38 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
     public const CACHE_PREFIX = 'space:';
     public const CACHE_TTL = 3600;
 
-    private const RESERVED_SLUGS = [
-        'admin', 'api', 'assets', 'auth', 'build', 'config', 'core', 'docs',
-        'install', 'library', 'login', 'logout', 'media', 'plugins', 'saml',
-        'search', 'settings', 'soi-central', 'storage', 'tech', 'themes',
-        'updates', 'uploads', 'users'
-    ];
-
     private static ?self $instance = null;
     private ?\PDO $pdo = null;
+    private ?AudiencePolicyServiceInterface $audiencePolicyService = null;
 
     /**
-     * @param \PDO|null $pdo Optional PDO instance for dependency injection or isolated unit testing.
+     * @param \PDO|null $pdo Optional PDO instance for dependency injection or testing.
+     * @param AudiencePolicyServiceInterface|null $audiencePolicyService Optional policy service.
      */
-    public function __construct(?\PDO $pdo = null)
+    public function __construct(?\PDO $pdo = null, ?AudiencePolicyServiceInterface $audiencePolicyService = null)
     {
         $this->pdo = $pdo;
+        $this->audiencePolicyService = $audiencePolicyService;
     }
 
     /**
-     * Get or create a singleton instance.
+     * Get or set the AudiencePolicyService instance.
+     */
+    public function getAudiencePolicyService(): AudiencePolicyServiceInterface
+    {
+        if ($this->audiencePolicyService === null) {
+            $this->audiencePolicyService = AudiencePolicyService::instance();
+        }
+        return $this->audiencePolicyService;
+    }
+
+    public function setAudiencePolicyService(AudiencePolicyServiceInterface $service): void
+    {
+        $this->audiencePolicyService = $service;
+    }
+
+    /**
+     * Get or create a default singleton instance.
      */
     public static function instance(?\PDO $pdo = null): self
     {
@@ -46,6 +67,9 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
         return self::$instance;
     }
 
+    /**
+     * Helper to get active PDO connection.
+     */
     private function getPdo(): \PDO
     {
         if ($this->pdo !== null) {
@@ -54,116 +78,106 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
         return Database::pdo();
     }
 
-    private function getTableName(): string
-    {
-        $pdo = $this->getPdo();
-        $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
-
-        if ($driver === 'sqlite') {
-            return 'soispaces';
-        }
-
-        try {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'soispaces'");
-            if ($stmt && $stmt->fetch()) {
-                return 'soispaces';
-            }
-        } catch (\Throwable $e) {}
-
-        return Database::prefix('spaces');
-    }
-
+    /**
+     * Normalize a slug string.
+     */
     public static function normalizeSlug(string $source): string
     {
         $slug = strtolower(trim($source));
-        $slug = (string) preg_replace('/[^a-z0-9\-]+/', '-', $slug);
-        return trim($slug, '-');
+        $slug = preg_replace('/[^a-z0-9\-]+/', '-', $slug);
+        $slug = trim((string) $slug, '-');
+        return $slug;
     }
 
+    /**
+     * Generate slug from title.
+     */
     public static function slugify(string $text): string
     {
         if (function_exists('slugify')) {
-            $s = slugify($text);
-            if (is_string($s) && $s !== '') {
-                return self::normalizeSlug($s);
+            $slug = slugify($text);
+            if (is_string($slug) && $slug !== '') {
+                return self::normalizeSlug($slug);
             }
         }
         return self::normalizeSlug($text);
     }
 
+    /**
+     * Create a new space record.
+     * Validates required title, unique slug, and enum type (generaldocs, libraries, tech).
+     *
+     * @param array<string, mixed> $data
+     * @return int Inserted space ID.
+     * @throws \InvalidArgumentException If validation fails or duplicate slug detected.
+     */
     public function createSpace(array $data): int
     {
-        $title = trim((string) ($data['title'] ?? $data['name'] ?? ''));
+        // 1. Validate required title
+        $title = trim((string) ($data['title'] ?? ''));
         if ($title === '') {
             throw new \InvalidArgumentException('Title is required for space.');
         }
 
-        $rawType = (string) ($data['type'] ?? SpaceSchema::TYPE_GENERALDOCS);
-        $type = SpaceSchema::normalizeType($rawType);
-        if (!SpaceSchema::isValidType($type)) {
+        // 2. Validate enum type
+        $rawType = (string) ($data['type'] ?? '');
+        if (!SpaceSchema::isValidType($rawType)) {
             $allowed = implode(', ', SpaceSchema::TYPES);
             throw new \InvalidArgumentException("Invalid space type '{$rawType}'. Allowed types: {$allowed}");
         }
+        $type = SpaceSchema::normalizeType($rawType);
 
+        // 3. Determine and validate slug
         $rawSlug = trim((string) ($data['slug'] ?? ''));
         $slug = $rawSlug !== '' ? self::normalizeSlug($rawSlug) : self::slugify($title);
         if ($slug === '') {
             throw new \InvalidArgumentException('A valid non-empty slug is required.');
         }
 
-        if (!$this->validateSlug($slug)) {
-            throw new \InvalidArgumentException("A space with slug '{$slug}' already exists or is reserved.");
+        // 4. Validate slug uniqueness
+        if ($this->slugExists($slug)) {
+            throw new \InvalidArgumentException("A space with slug '{$slug}' already exists.");
         }
 
-        $status = strtolower(trim((string) ($data['status'] ?? SpaceSchema::STATUS_PUBLISHED)));
-        if (!SpaceSchema::isValidStatus($status)) {
-            $status = SpaceSchema::STATUS_PUBLISHED;
-        }
-
-        $visibility = strtolower(trim((string) ($data['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC)));
-        if (!SpaceSchema::isValidVisibility($visibility)) {
-            $visibility = SpaceSchema::VISIBILITY_PUBLIC;
-        }
-
-        $sortorder = (int) ($data['sortorder'] ?? $data['sort_order'] ?? 0);
-        $description = isset($data['description']) && $data['description'] !== null ? trim((string) $data['description']) : null;
-        $icon = isset($data['icon']) && $data['icon'] !== null ? trim((string) $data['icon']) : null;
-
-        $audiencePolicy = null;
-        if (isset($data['audience_policy'])) {
-            $audiencePolicy = is_array($data['audience_policy'])
-                ? json_encode($data['audience_policy'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                : (string) $data['audience_policy'];
-        }
-
-        $settings = null;
-        if (isset($data['settings'])) {
-            $settings = is_array($data['settings'])
-                ? json_encode($data['settings'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                : (string) $data['settings'];
-        }
-
+        // 5. Default and sanitize remaining fields
+        $status = (string) ($data['status'] ?? SpaceSchema::STATUS_PUBLISHED);
+        $visibility = (string) ($data['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC);
+        $sortorder = (int) ($data['sortorder'] ?? 0);
+        $description = isset($data['description']) ? (string) $data['description'] : null;
+        $icon = isset($data['icon']) ? (string) $data['icon'] : null;
         $now = date('Y-m-d H:i:s');
 
+        // 5b. Validate and normalize audience policy (WD-03)
+        $policyService = $this->getAudiencePolicyService();
+        $rawPolicy = $data['audience_policy'] ?? null;
+        if ($rawPolicy !== null && $rawPolicy !== '') {
+            $decodedForValidation = is_string($rawPolicy) ? json_decode($rawPolicy, true) : $rawPolicy;
+            if (is_array($decodedForValidation) && !$policyService->validatePolicySchema($decodedForValidation)) {
+                throw new \InvalidArgumentException('Invalid audience policy schema.');
+            }
+            $normalizedPolicy = $policyService->normalizePolicy($rawPolicy, $visibility);
+        } else {
+            $normalizedPolicy = $policyService->getDefaultPolicy($visibility);
+        }
+        $audiencePolicyJson = json_encode($normalizedPolicy, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $record = [
-            'title'       => $title,
-            'slug'        => $slug,
-            'type'        => $type,
-            'status'      => $status,
-            'visibility'  => $visibility,
-            'sortorder'   => $sortorder,
-            'description' => $description,
-            'icon'        => $icon,
-            'audience_policy' => $audiencePolicy,
-            'settings'    => $settings,
-            'created_at'  => $now,
-            'updated_at'  => $now,
+            'title'           => $title,
+            'slug'            => $slug,
+            'type'            => $type,
+            'status'          => $status,
+            'visibility'      => $visibility,
+            'sortorder'       => $sortorder,
+            'description'     => $description,
+            'icon'            => $icon,
+            'audience_policy' => $audiencePolicyJson,
+            'created_at'      => $now,
+            'updated_at'      => $now,
         ];
 
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
-        $cols = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($record)));
+        // 6. Insert into soispaces table
+        $table = SpaceSchema::TABLE;
+        $cols = implode(', ', array_keys($record));
         $placeholders = implode(', ', array_fill(0, count($record), '?'));
         $sql = "INSERT INTO `{$table}` ({$cols}) VALUES ({$placeholders})";
 
@@ -174,39 +188,50 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
 
         $record['id'] = $id;
 
+        // 7. Warm cache for both ID and Slug
         $this->setCacheForRecord($record);
 
         return $id;
     }
 
+    /**
+     * Fetch a space record by primary key ID with caching.
+     *
+     * @param int $id
+     * @return array<string, mixed>|null
+     */
     public function getSpace(int $id): ?array
     {
         if ($id <= 0) {
             return null;
         }
 
-        $cached = Cache::get(self::CACHE_PREFIX . "id:{$id}") ?? Cache::get("space_id_{$id}");
+        $cacheKey = self::CACHE_PREFIX . "id:{$id}";
+        $cached = Cache::get($cacheKey);
         if ($cached !== null && is_array($cached)) {
             return $cached;
         }
 
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
-        $sql = "SELECT * FROM `{$table}` WHERE `id` = ? LIMIT 1";
+        $table = SpaceSchema::TABLE;
+        $sql = "SELECT * FROM `{$table}` WHERE id = ? LIMIT 1";
         $stmt = $this->getPdo()->prepare($sql);
         $stmt->execute([$id]);
         $record = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         if ($record && is_array($record)) {
-            $hydrated = $this->hydrateRecord($record);
-            $this->setCacheForRecord($hydrated);
-            return $hydrated;
+            $this->setCacheForRecord($record);
+            return $record;
         }
 
         return null;
     }
 
+    /**
+     * Fetch a space record by slug with caching.
+     *
+     * @param string $slug
+     * @return array<string, mixed>|null
+     */
     public function getSpaceBySlug(string $slug): ?array
     {
         $normalized = self::normalizeSlug($slug);
@@ -214,90 +239,68 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
             return null;
         }
 
-        $cached = Cache::get(self::CACHE_PREFIX . "slug:{$normalized}") ?? Cache::get("space_slug_{$normalized}");
+        $cacheKey = self::CACHE_PREFIX . "slug:{$normalized}";
+        $cached = Cache::get($cacheKey);
         if ($cached !== null && is_array($cached)) {
             return $cached;
         }
 
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
-        $sql = "SELECT * FROM `{$table}` WHERE `slug` = ? LIMIT 1";
+        $table = SpaceSchema::TABLE;
+        $sql = "SELECT * FROM `{$table}` WHERE slug = ? LIMIT 1";
         $stmt = $this->getPdo()->prepare($sql);
         $stmt->execute([$normalized]);
         $record = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         if ($record && is_array($record)) {
-            $hydrated = $this->hydrateRecord($record);
-            $this->setCacheForRecord($hydrated);
-            return $hydrated;
+            $this->setCacheForRecord($record);
+            return $record;
         }
 
         return null;
     }
 
+    /**
+     * Query spaces with optional filtering (type, status, visibility),
+     * ordered by sortorder ASC, title ASC.
+     *
+     * @param array<string, mixed> $filter Optional filters (type, status, visibility).
+     * @return array<int, array<string, mixed>> Matching spaces.
+     */
     public function listSpaces(array $filter = []): array
     {
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
+        $table = SpaceSchema::TABLE;
         $conditions = [];
         $params = [];
 
-        if (!empty($filter['type']) || !empty($filter['types'])) {
-            $typeInput = $filter['type'] ?? $filter['types'];
-            $types = is_array($typeInput) ? $typeInput : explode(',', (string) $typeInput);
-            $normalizedTypes = [];
-            foreach ($types as $t) {
-                $norm = SpaceSchema::normalizeType((string) $t);
-                if ($norm !== '') {
-                    $normalizedTypes[] = $norm;
-                }
-            }
-            if (!empty($normalizedTypes)) {
-                $placeholders = implode(', ', array_fill(0, count($normalizedTypes), '?'));
-                $conditions[] = "`type` IN ({$placeholders})";
-                $params = array_merge($params, $normalizedTypes);
-            }
+        if (!empty($filter['q'])) {
+            $conditions[] = '(`title` LIKE ? OR `slug` LIKE ? OR `description` LIKE ?)';
+            $searchTerm = '%' . trim((string) $filter['q']) . '%';
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
         }
 
-        if (!empty($filter['status']) || !empty($filter['statuses'])) {
-            $statusInput = $filter['status'] ?? $filter['statuses'];
-            $statuses = is_array($statusInput) ? $statusInput : explode(',', (string) $statusInput);
-            $cleanStatuses = array_values(array_filter(array_map('strtolower', array_map('trim', $statuses))));
-            if (!empty($cleanStatuses)) {
-                $placeholders = implode(', ', array_fill(0, count($cleanStatuses), '?'));
-                $conditions[] = "`status` IN ({$placeholders})";
-                $params = array_merge($params, $cleanStatuses);
-            }
+        if (!empty($filter['type'])) {
+            $conditions[] = '`type` = ?';
+            $params[] = SpaceSchema::normalizeType((string) $filter['type']);
         }
 
-        if (!empty($filter['visibility']) || !empty($filter['visibilities'])) {
-            $visInput = $filter['visibility'] ?? $filter['visibilities'];
-            $visibilities = is_array($visInput) ? $visInput : explode(',', (string) $visInput);
-            $cleanVis = array_values(array_filter(array_map('strtolower', array_map('trim', $visibilities))));
-            if (!empty($cleanVis)) {
-                $placeholders = implode(', ', array_fill(0, count($cleanVis), '?'));
-                $conditions[] = "`visibility` IN ({$placeholders})";
-                $params = array_merge($params, $cleanVis);
-            }
+        if (!empty($filter['status'])) {
+            $conditions[] = '`status` = ?';
+            $params[] = (string) $filter['status'];
         }
 
-        if (!empty($filter['q']) || !empty($filter['search'])) {
-            $query = '%' . trim((string) ($filter['q'] ?? $filter['search'])) . '%';
-            $conditions[] = "(`title` LIKE ? OR `slug` LIKE ? OR `description` LIKE ?)";
-            $params[] = $query;
-            $params[] = $query;
-            $params[] = $query;
+        if (!empty($filter['visibility'])) {
+            $conditions[] = '`visibility` = ?';
+            $params[] = (string) $filter['visibility'];
         }
 
         $whereClause = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
-        
-        $sql = "SELECT * FROM `{$table}` {$whereClause} ORDER BY `sortorder` ASC, `title` ASC";
+        $sql = "SELECT * FROM `{$table}` {$whereClause} ORDER BY sortorder ASC, title ASC";
 
-        if (isset($filter['limit']) && (int) $filter['limit'] > 0) {
+        if (!empty($filter['limit'])) {
             $limit = (int) $filter['limit'];
-            $offset = max(0, (int) ($filter['offset'] ?? 0));
+            $offset = (int) ($filter['offset'] ?? 0);
             $sql .= " LIMIT {$limit} OFFSET {$offset}";
         }
 
@@ -305,49 +308,107 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
         $stmt->execute($params);
         $results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        if (!is_array($results)) {
-            return [];
-        }
-
-        return array_map(fn($r) => $this->hydrateRecord($r), $results);
+        return is_array($results) ? $results : [];
     }
 
+    /**
+     * Count matching spaces with optional filtering.
+     *
+     * @param array<string, mixed> $filter
+     * @return int Total number of matching spaces.
+     */
     public function getSpaceCount(array $filter = []): int
     {
-        return count($this->listSpaces($filter));
+        $table = SpaceSchema::TABLE;
+        $conditions = [];
+        $params = [];
+
+        if (!empty($filter['q'])) {
+            $conditions[] = '(`title` LIKE ? OR `slug` LIKE ? OR `description` LIKE ?)';
+            $searchTerm = '%' . trim((string) $filter['q']) . '%';
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+        }
+
+        if (!empty($filter['type'])) {
+            $conditions[] = '`type` = ?';
+            $params[] = SpaceSchema::normalizeType((string) $filter['type']);
+        }
+
+        if (!empty($filter['status'])) {
+            $conditions[] = '`status` = ?';
+            $params[] = (string) $filter['status'];
+        }
+
+        if (!empty($filter['visibility'])) {
+            $conditions[] = '`visibility` = ?';
+            $params[] = (string) $filter['visibility'];
+        }
+
+        $whereClause = $conditions !== [] ? 'WHERE ' . implode(' AND ', $conditions) : '';
+        $sql = "SELECT COUNT(*) FROM `{$table}` {$whereClause}";
+
+        $stmt = $this->getPdo()->prepare($sql);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
     }
 
+    /**
+     * Query spaces filtered by subject access policy and optional criteria (type, status, visibility),
+     * tailored to the requesting viewer.
+     *
+     * @param AudienceSubjectContext $subject Requesting user/guest context.
+     * @param array<string, mixed> $filter Optional filters (type, status, visibility).
+     * @return array<int, array<string, mixed>> List of matching space records accessible to the subject.
+     */
+    public function listSpacesForSubject(AudienceSubjectContext $subject, array $filter = []): array
+    {
+        $spaces = $this->listSpaces($filter);
+        return $this->getAudiencePolicyService()->filterAccessibleSpaces($subject, $spaces);
+    }
+
+    /**
+     * Update an existing space record by ID and purge related cache keys.
+     *
+     * @param int $id
+     * @param array<string, mixed> $data
+     * @return bool True if updated, false if not found.
+     * @throws \InvalidArgumentException If validation fails or duplicate slug detected.
+     */
     public function updateSpace(int $id, array $data): bool
     {
         if ($id <= 0) {
             return false;
         }
 
-        $existing = $this->getSpace($id);
+        $existing = $this->findRawById($id);
         if (!$existing) {
             return false;
         }
 
         $updates = [];
 
-        if (array_key_exists('title', $data) || array_key_exists('name', $data)) {
-            $title = trim((string) ($data['title'] ?? $data['name'] ?? ''));
+        // 1. Validate title if provided
+        if (array_key_exists('title', $data)) {
+            $title = trim((string) $data['title']);
             if ($title === '') {
                 throw new \InvalidArgumentException('Title cannot be empty.');
             }
             $updates['title'] = $title;
         }
 
+        // 2. Validate enum type if provided
         if (array_key_exists('type', $data)) {
             $rawType = (string) $data['type'];
-            $type = SpaceSchema::normalizeType($rawType);
-            if (!SpaceSchema::isValidType($type)) {
+            if (!SpaceSchema::isValidType($rawType)) {
                 $allowed = implode(', ', SpaceSchema::TYPES);
                 throw new \InvalidArgumentException("Invalid space type '{$rawType}'. Allowed types: {$allowed}");
             }
-            $updates['type'] = $type;
+            $updates['type'] = SpaceSchema::normalizeType($rawType);
         }
 
+        // 3. Validate slug if provided
         $slugUpdated = false;
         $newSlug = '';
         if (array_key_exists('slug', $data)) {
@@ -358,58 +419,62 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
             }
 
             if ($newSlug !== (string) $existing['slug']) {
-                if (!$this->validateSlug($newSlug, $id)) {
-                    throw new \InvalidArgumentException("A space with slug '{$newSlug}' already exists or is reserved.");
+                if ($this->slugExists($newSlug, $id)) {
+                    throw new \InvalidArgumentException("A space with slug '{$newSlug}' already exists.");
                 }
                 $slugUpdated = true;
                 $updates['slug'] = $newSlug;
             }
         }
 
+        // 4. Update status and visibility if provided
         if (array_key_exists('status', $data)) {
-            $status = strtolower(trim((string) $data['status']));
-            if (!SpaceSchema::isValidStatus($status)) {
-                $status = SpaceSchema::STATUS_PUBLISHED;
-            }
-            $updates['status'] = $status;
+            $updates['status'] = (string) $data['status'];
         }
 
         if (array_key_exists('visibility', $data)) {
-            $visibility = strtolower(trim((string) $data['visibility']));
-            if (!SpaceSchema::isValidVisibility($visibility)) {
-                $visibility = SpaceSchema::VISIBILITY_PUBLIC;
-            }
-            $updates['visibility'] = $visibility;
+            $updates['visibility'] = (string) $data['visibility'];
         }
 
-        if (array_key_exists('sortorder', $data) || array_key_exists('sort_order', $data)) {
-            $updates['sortorder'] = (int) ($data['sortorder'] ?? $data['sort_order'] ?? 0);
+        if (array_key_exists('sortorder', $data)) {
+            $updates['sortorder'] = (int) $data['sortorder'];
         }
 
         if (array_key_exists('description', $data)) {
-            $updates['description'] = $data['description'] !== null ? trim((string) $data['description']) : null;
+            $updates['description'] = $data['description'] !== null ? (string) $data['description'] : null;
         }
 
         if (array_key_exists('icon', $data)) {
-            $updates['icon'] = $data['icon'] !== null ? trim((string) $data['icon']) : null;
+            $updates['icon'] = $data['icon'] !== null ? (string) $data['icon'] : null;
         }
 
+        // 4b. Validate and normalize audience policy if provided (WD-03)
         if (array_key_exists('audience_policy', $data)) {
-            $updates['audience_policy'] = is_array($data['audience_policy'])
-                ? json_encode($data['audience_policy'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                : (isset($data['audience_policy']) ? (string) $data['audience_policy'] : null);
-        }
-
-        if (array_key_exists('settings', $data)) {
-            $updates['settings'] = is_array($data['settings'])
-                ? json_encode($data['settings'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                : (isset($data['settings']) ? (string) $data['settings'] : null);
+            $policyService = $this->getAudiencePolicyService();
+            $rawPolicy = $data['audience_policy'];
+            $effectiveVis = (string) ($updates['visibility'] ?? $existing['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC);
+            if ($rawPolicy !== null && $rawPolicy !== '') {
+                $decodedForValidation = is_string($rawPolicy) ? json_decode($rawPolicy, true) : $rawPolicy;
+                if (is_array($decodedForValidation) && !$policyService->validatePolicySchema($decodedForValidation)) {
+                    throw new \InvalidArgumentException('Invalid audience policy schema.');
+                }
+                $normalizedPolicy = $policyService->normalizePolicy($rawPolicy, $effectiveVis);
+            } else {
+                $normalizedPolicy = $policyService->getDefaultPolicy($effectiveVis);
+            }
+            $updates['audience_policy'] = json_encode($normalizedPolicy, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } elseif (array_key_exists('visibility', $updates) && !empty($existing['audience_policy'])) {
+            // Keep existing policy visibility synchronized with space visibility update
+            $policyService = $this->getAudiencePolicyService();
+            $normalizedPolicy = $policyService->normalizePolicy($existing['audience_policy'], $updates['visibility']);
+            $normalizedPolicy['visibility'] = $updates['visibility'];
+            $updates['audience_policy'] = json_encode($normalizedPolicy, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
 
         $updates['updated_at'] = date('Y-m-d H:i:s');
 
-        SpaceSchema::ensure($this->pdo);
-        $table = $this->getTableName();
+        // 5. Run DB update
+        $table = SpaceSchema::TABLE;
         $setClauses = [];
         $params = [];
         foreach ($updates as $col => $val) {
@@ -419,135 +484,180 @@ class KnowledgeSpaceService implements KnowledgeSpaceServiceInterface
         $params[] = $id;
 
         $setSql = implode(', ', $setClauses);
-        $sql = "UPDATE `{$table}` SET {$setSql} WHERE `id` = ?";
+        $sql = "UPDATE `{$table}` SET {$setSql} WHERE id = ?";
         $stmt = $this->getPdo()->prepare($sql);
         $stmt->execute($params);
 
-        $this->purgeSpaceCache($id, (string) $existing['slug']);
+        // 6. Purge related cache keys
+        $this->purgeCacheForSpace($id, (string) $existing['slug']);
         if ($slugUpdated && $newSlug !== '') {
-            $this->purgeSpaceCache($id, $newSlug);
+            Cache::delete(self::CACHE_PREFIX . "slug:{$newSlug}");
+            Cache::purge(self::CACHE_PREFIX . "slug:{$newSlug}");
         }
-
-        $updatedRecord = array_merge($existing, $updates);
-        $this->setCacheForRecord($updatedRecord);
 
         return true;
     }
 
+    /**
+     * Delete a space record by ID and purge related cache keys.
+     *
+     * @param int $id
+     * @return bool True if deleted, false if not found.
+     */
     public function deleteSpace(int $id): bool
     {
         if ($id <= 0) {
             return false;
         }
 
-        $existing = $this->getSpace($id);
+        $existing = $this->findRawById($id);
         if (!$existing) {
             return false;
         }
 
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
-        $sql = "DELETE FROM `{$table}` WHERE `id` = ?";
+        $table = SpaceSchema::TABLE;
+        $sql = "DELETE FROM `{$table}` WHERE id = ?";
         $stmt = $this->getPdo()->prepare($sql);
         $stmt->execute([$id]);
 
-        $this->purgeSpaceCache($id, (string) $existing['slug']);
+        // Purge related cache keys
+        $this->purgeCacheForSpace($id, (string) $existing['slug']);
 
         return true;
     }
 
+    /**
+     * Check if a slug is already taken (optionally ignoring a specific ID).
+     */
+    private function slugExists(string $slug, int $excludeId = 0): bool
+    {
+        $table = SpaceSchema::TABLE;
+        if ($excludeId > 0) {
+            $sql = "SELECT id FROM `{$table}` WHERE slug = ? AND id != ? LIMIT 1";
+            $stmt = $this->getPdo()->prepare($sql);
+            $stmt->execute([$slug, $excludeId]);
+        } else {
+            $sql = "SELECT id FROM `{$table}` WHERE slug = ? LIMIT 1";
+            $stmt = $this->getPdo()->prepare($sql);
+            $stmt->execute([$slug]);
+        }
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Raw DB fetch by ID without cache lookup.
+     */
+    private function findRawById(int $id): ?array
+    {
+        $table = SpaceSchema::TABLE;
+        $sql = "SELECT * FROM `{$table}` WHERE id = ? LIMIT 1";
+        $stmt = $this->getPdo()->prepare($sql);
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Warm cache for both ID and Slug keys.
+     */
+    private function setCacheForRecord(array $record): void
+    {
+        if (isset($record['id'])) {
+            Cache::set(self::CACHE_PREFIX . "id:{$record['id']}", $record, self::CACHE_TTL);
+        }
+        if (!empty($record['slug'])) {
+            Cache::set(self::CACHE_PREFIX . "slug:{$record['slug']}", $record, self::CACHE_TTL);
+        }
+    }
+
+    /**
+     * Validate whether a space slug is valid, non-reserved, and uniquely available.
+     *
+     * @param string $slug
+     * @param int|null $excludeId
+     * @return bool True if slug is valid and available.
+     */
     public function validateSlug(string $slug, ?int $excludeId = null): bool
     {
-        $trimmed = trim(strtolower($slug));
-        if ($trimmed === '' || strlen($trimmed) > 191) {
+        $trimmed = trim($slug);
+        if ($trimmed === '') {
             return false;
         }
 
+        // Slug format check: lowercase alphanumeric and hyphens only
         if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $trimmed)) {
             return false;
         }
 
-        if (in_array($trimmed, self::RESERVED_SLUGS, true)) {
+        // Reserved words check
+        if (in_array(strtolower($trimmed), SpaceSchema::RESERVED_SLUGS, true)) {
             return false;
         }
 
-        $normalized = $trimmed;
-
-        SpaceSchema::ensure($this->pdo);
-
-        $table = $this->getTableName();
-        $sql = "SELECT `id` FROM `{$table}` WHERE `slug` = ?";
-        $params = [$normalized];
-
-        if ($excludeId !== null && $excludeId > 0) {
-            $sql .= " AND `id` != ?";
-            $params[] = $excludeId;
-        }
-
-        $stmt = $this->getPdo()->prepare($sql);
-        $stmt->execute($params);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-        return empty($row);
+        // Uniqueness check
+        return !$this->slugExists($trimmed, $excludeId ?? 0);
     }
 
+    /**
+     * Invalidate both ID and Slug cache keys.
+     */
     public function purgeSpaceCache(?int $id = null, ?string $slug = null): void
     {
         if ($id !== null && $id > 0) {
             Cache::delete(self::CACHE_PREFIX . "id:{$id}");
-            Cache::delete("space_id_{$id}");
+            Cache::delete(self::CACHE_PREFIX . "{$id}");
+            Cache::purge(self::CACHE_PREFIX . "id:{$id}");
         }
 
-        if ($slug !== null && $slug !== '') {
-            $normalized = self::normalizeSlug($slug);
-            Cache::delete(self::CACHE_PREFIX . "slug:{$normalized}");
-            Cache::delete("space_slug_{$normalized}");
-            Cache::purgeUri("/docs/{$normalized}");
-            Cache::purgeUri("/library/{$normalized}");
-            Cache::purgeUri("/tech/{$normalized}");
+        if ($slug !== null && trim($slug) !== '') {
+            $s = trim($slug);
+            Cache::delete(self::CACHE_PREFIX . "slug:{$s}");
+            Cache::delete(self::CACHE_PREFIX . "{$s}");
+            Cache::purge(self::CACHE_PREFIX . "slug:{$s}");
         }
 
-        Cache::delete('spaces_list_all');
-        Cache::purgeAll();
+        Cache::delete('spaces:list');
+        Cache::delete('spaces:all');
     }
 
-    private function setCacheForRecord(array $record): void
+    private function purgeCacheForSpace(int $id, string $slug): void
     {
-        $id = (int) ($record['id'] ?? 0);
-        $slug = (string) ($record['slug'] ?? '');
-
-        if ($id > 0) {
-            Cache::set(self::CACHE_PREFIX . "id:{$id}", $record, self::CACHE_TTL);
-            Cache::set("space_id_{$id}", $record, self::CACHE_TTL);
-        }
-
-        if ($slug !== '') {
-            Cache::set(self::CACHE_PREFIX . "slug:{$slug}", $record, self::CACHE_TTL);
-            Cache::set("space_slug_{$slug}", $record, self::CACHE_TTL);
-        }
+        $this->purgeSpaceCache($id, $slug);
     }
 
-    private function hydrateRecord(array $row): array
+    /*
+     * -------------------------------------------------------------
+     * Static convenience facades for direct CMS-wide access
+     * -------------------------------------------------------------
+     */
+
+    public static function create(array $data): int
     {
-        $row['id'] = (int) ($row['id'] ?? 0);
-        $row['sortorder'] = (int) ($row['sortorder'] ?? $row['sort_order'] ?? 0);
-        $row['sort_order'] = $row['sortorder'];
+        return self::instance()->createSpace($data);
+    }
 
-        if (isset($row['audience_policy']) && is_string($row['audience_policy']) && $row['audience_policy'] !== '') {
-            $decoded = json_decode($row['audience_policy'], true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $row['audience_policy_parsed'] = $decoded;
-            }
-        }
+    public static function get(int $id): ?array
+    {
+        return self::instance()->getSpace($id);
+    }
 
-        if (isset($row['settings']) && is_string($row['settings']) && $row['settings'] !== '') {
-            $decoded = json_decode($row['settings'], true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $row['settings_parsed'] = $decoded;
-            }
-        }
+    public static function getBySlug(string $slug): ?array
+    {
+        return self::instance()->getSpaceBySlug($slug);
+    }
 
-        return $row;
+    public static function list(array $filter = []): array
+    {
+        return self::instance()->listSpaces($filter);
+    }
+
+    public static function update(int $id, array $data): bool
+    {
+        return self::instance()->updateSpace($id, $data);
+    }
+
+    public static function delete(int $id): bool
+    {
+        return self::instance()->deleteSpace($id);
     }
 }

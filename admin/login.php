@@ -21,15 +21,25 @@ Database::connect(['host'=>SOI_DB_HOST,'name'=>SOI_DB_NAME,'user'=>SOI_DB_USER,'
 Auth::init();
 SoiCentralAuth::install();
 
-if (!Accounts::isLinked()) {
+if (!Accounts::isLinked() && (!defined('SOI_ALLOW_LOCAL_LOGIN') || !SOI_ALLOW_LOCAL_LOGIN)) {
     soi_redirect(SOI_ADMIN_URL . '/connect.php');
 }
 
-if (Auth::check()) {
-    soi_redirect(SOI_ADMIN_URL . '/index.php');
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = trim((string) ($_POST['username'] ?? ''));
+    $password = (string) ($_POST['password'] ?? '');
+    if ($username !== '' && Auth::loginLocal($username, $password)) {
+        soi_redirect(SOI_ADMIN_URL . '/spaces.php');
+    } else {
+        $error = 'Invalid credentials.';
+    }
 }
 
-$error = trim((string) ($_GET['error'] ?? ''));
+if (Auth::check()) {
+    soi_redirect(SOI_ADMIN_URL . '/spaces.php');
+}
+
+$error = $error ?? trim((string) ($_GET['error'] ?? ''));
 $flashes = soi_get_flash();
 $justLinked = isset($_GET['linked']);
 $samlUnavailable = isset($_GET['saml']) && $_GET['saml'] === 'unavailable';
@@ -146,12 +156,25 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin-bottom:.35rem}
   </div>
   <?php endif; ?>
 
-  <?php if ($samlReady): ?>
-  <a href="<?= esc($samlLoginUrl) ?>" class="btn">Continue with SOI Accounts (SAML)</a>
-  <?php else: ?>
-  <a href="<?= esc($authorizeUrl) ?>" class="btn">Sign in with SOI Accounts (OAuth)</a>
+  <?php if (defined('SOI_ALLOW_LOCAL_LOGIN') && SOI_ALLOW_LOCAL_LOGIN): ?>
+  <form method="POST" action="login.php" style="margin-bottom:1.25rem;">
+    <div style="margin-bottom:1rem;text-align:left;">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.35rem;color:#cbd5e1;">Username or Email</label>
+      <input type="text" name="username" value="admin" required style="width:100%;padding:0.75rem 1rem;background:#0b1220;border:1px solid var(--border);border-radius:8px;color:#fff;font-size:0.9rem;">
+    </div>
+    <div style="margin-bottom:1.25rem;text-align:left;">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.35rem;color:#cbd5e1;">Password</label>
+      <input type="password" name="password" value="admin123" required style="width:100%;padding:0.75rem 1rem;background:#0b1220;border:1px solid var(--border);border-radius:8px;color:#fff;font-size:0.9rem;">
+    </div>
+    <button type="submit" class="btn">Sign In to Dashboard</button>
+  </form>
   <?php endif; ?>
-  <a href="<?= esc($authorizeUrl) ?>" class="btn btn-secondary"><?= $samlReady ? 'OAuth fallback (setup only)' : 'Retry OAuth authorize' ?></a>
+
+  <?php if ($samlReady): ?>
+  <a href="<?= esc($samlLoginUrl) ?>" class="btn btn-secondary">Continue with SOI Accounts (SAML)</a>
+  <?php elseif (Accounts::isLinked()): ?>
+  <a href="<?= esc($authorizeUrl) ?>" class="btn btn-secondary">Sign in with SOI Accounts (OAuth)</a>
+  <?php endif; ?>
 
   <div class="footer">
     <a href="<?= esc(SOI_HOME_URL) ?>">← Back to website</a>

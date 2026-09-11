@@ -327,7 +327,45 @@ class App {
 
         $spaceId = (int)$space['id'];
 
-        // 2. Resolve Document & Section
+        // Server-Side Audience Authorization Guards (Task WD-04)
+        $subject = \SOI\Core\Spaces\Audience\AudienceSubjectContext::fromCurrentSession();
+        $policyService = new \SOI\Core\Spaces\Audience\AudiencePolicyService();
+
+        // 2. Space Access Authorization Guard
+        if (!$policyService->canAccessSpace($space, $subject)) {
+            if ($subject->isLoggedIn()) {
+                http_response_code(403);
+                $theme403 = $themeDir . '/403.php';
+                if (file_exists($theme403)) {
+                    return [$theme403, []];
+                }
+                $rootDir = defined('SOI_ROOT') ? SOI_ROOT : dirname(__DIR__);
+                $readerTemplate = $rootDir . '/templates/reader-shell.php';
+                if (file_exists($readerTemplate)) {
+                    return [$readerTemplate, [
+                        'space' => [
+                            'name' => $space['title'] ?? 'Knowledge Center',
+                            'slug' => $spaceSlug,
+                            'type' => $spaceType
+                        ],
+                        'sections' => [],
+                        'document' => null,
+                        'breadcrumbs' => [],
+                        'activeSection' => '',
+                        'activeSlug' => '',
+                        'isDenied' => true,
+                        'denialMessage' => 'You do not have permission to access this knowledge space.'
+                    ]];
+                }
+                return [$themeDir . '/404.php', []];
+            }
+
+            // Guest denial: clean 404 to prevent revealing restricted space existence
+            http_response_code(404);
+            return [$themeDir . '/404.php', []];
+        }
+
+        // 3. Resolve Document & Section
         $section = null;
         $document = null;
 
@@ -345,9 +383,46 @@ class App {
                 http_response_code(404);
                 return [$themeDir . '/404.php', $vars];
             }
+
+            // Document Access Authorization Guard (Task WD-04)
+            if (!$policyService->canAccessDocument($document, $subject)) {
+                if ($subject->isLoggedIn()) {
+                    http_response_code(403);
+                    $theme403 = $themeDir . '/403.php';
+                    if (file_exists($theme403)) {
+                        return [$theme403, []];
+                    }
+                    $rootDir = defined('SOI_ROOT') ? SOI_ROOT : dirname(__DIR__);
+                    $readerTemplate = $rootDir . '/templates/reader-shell.php';
+                    if (file_exists($readerTemplate)) {
+                        $tree = \SOI\Core\Spaces\TaxonomyService::instance()->buildNavigationTree($spaceId, null, null, $subject);
+                        $sections = $tree['sections'] ?? $tree;
+                        $breadcrumbs = \SOI\Core\Spaces\SpaceDocumentService::buildBreadcrumbs($space, $section, null);
+                        return [$readerTemplate, [
+                            'space' => $space,
+                            'sections' => $sections,
+                            'document' => null,
+                            'breadcrumbs' => $breadcrumbs,
+                            'activeSection' => $sectionSlug,
+                            'activeSlug' => $docSlug,
+                            'isDenied' => true,
+                            'denialMessage' => 'You do not have permission to access this document.'
+                        ]];
+                    }
+                    return [$themeDir . '/404.php', []];
+                }
+
+                // Guest denial: clean 404 to prevent revealing restricted document existence
+                http_response_code(404);
+                return [$themeDir . '/404.php', []];
+            }
         } else {
             // Space landing view: resolve default/landing document
             $document = \SOI\Core\Spaces\SpaceDocumentService::findLandingDocument($spaceId);
+            if ($document && !$policyService->canAccessDocument($document, $subject)) {
+                // Clear restricted landing document before rendering
+                $document = null;
+            }
             if ($document && !empty($document['section_id'])) {
                 $section = [
                     'id' => $document['section_id'],
@@ -357,14 +432,14 @@ class App {
             }
         }
 
-        // 3. Build Navigation Tree
-        $tree = \SOI\Core\Spaces\TaxonomyService::instance()->buildNavigationTree($spaceId);
+        // 4. Build Navigation Tree with audience filtering
+        $tree = \SOI\Core\Spaces\TaxonomyService::instance()->buildNavigationTree($spaceId, null, null, $subject);
         $sections = $tree['sections'] ?? $tree;
 
-        // 4. Build Breadcrumbs Hierarchy
+        // 5. Build Breadcrumbs Hierarchy
         $breadcrumbs = \SOI\Core\Spaces\SpaceDocumentService::buildBreadcrumbs($space, $section, $document);
 
-        // 5. Expose variables
+        // 6. Expose variables
         $vars['space'] = $space;
         $vars['sections'] = $sections;
         $vars['document'] = $document;
@@ -372,7 +447,7 @@ class App {
         $vars['activeSection'] = $sectionSlug ?? ($document['section_slug'] ?? '');
         $vars['activeSlug'] = $docSlug ?? ($document['slug'] ?? '');
 
-        // 6. Return Reader Shell Template
+        // 7. Return Reader Shell Template
         $rootDir = defined('SOI_ROOT') ? SOI_ROOT : dirname(__DIR__);
         $readerTemplate = $rootDir . '/templates/reader-shell.php';
         if (file_exists($readerTemplate)) {

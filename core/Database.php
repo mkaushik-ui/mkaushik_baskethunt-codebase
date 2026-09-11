@@ -9,12 +9,20 @@ class Database {
     private static string $prefix = 'soi_';
 
     public static function connect(array $config): void {
-        $dsn = "mysql:host={$config['host']};dbname={$config['name']};charset=utf8mb4;port={$config['port']}";
         $options = [
             \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
             \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             \PDO::ATTR_EMULATE_PREPARES   => false,
         ];
+
+        if ((isset($config['driver']) && $config['driver'] === 'sqlite') || (defined('SOI_DB_DRIVER') && SOI_DB_DRIVER === 'sqlite')) {
+            $path = $config['path'] ?? (defined('SOI_DB_PATH') ? SOI_DB_PATH : (SOI_ROOT . '/storage/database.sqlite'));
+            self::$pdo = new \PDO("sqlite:{$path}", null, null, $options);
+            self::$prefix = $config['prefix'] ?? 'soi_';
+            return;
+        }
+
+        $dsn = "mysql:host={$config['host']};dbname={$config['name']};charset=utf8mb4;port={$config['port']}";
         try {
             self::$pdo = new \PDO($dsn, $config['user'], $config['pass'], $options);
             self::$prefix = $config['prefix'] ?? 'soi_';

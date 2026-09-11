@@ -32,12 +32,15 @@ $spaceName = (string) ($space['name'] ?? ($space['title'] ?? 'Documentation'));
 $spaceSlug = (string) ($space['slug'] ?? 'docs');
 $spaceType = (string) ($space['type'] ?? 'docs');
 
-$docTitle  = !empty($document['title']) ? (string) $document['title'] : $spaceName;
-$pageTitle = $docTitle . ' — ' . $spaceName;
+$isDenied = !empty($isDenied);
+$docTitle  = !empty($document['title']) ? (string) $document['title'] : ($isDenied ? 'Access Restricted' : $spaceName);
+$pageTitle = $isDenied ? '403 Forbidden — Access Restricted' : ($docTitle . ' — ' . $spaceName);
 
 $currentSlug    = $activeSlug ?? ($document['slug'] ?? '');
 $currentSection = $activeSection ?? ($document['section_slug'] ?? '');
 $currentVersion = $_GET['v'] ?? ($document['doc_version'] ?? '');
+
+$homeUrl = defined('SOI_HOME_URL') ? SOI_HOME_URL : '/';
 
 // Layout preset (Standard ~820px, Wide ~1140px, Full 100%)
 $layoutPreset = (string) ($document['layout_preset'] ?? 'standard');
@@ -48,7 +51,15 @@ $layoutClass = 'kc-layout-' . $layoutPreset;
 
 // Render document content with canonical parity
 $renderedBodyHtml = '';
-if (!empty($document)) {
+if ($isDenied) {
+    $msg = !empty($denialMessage) ? (string) $denialMessage : 'You do not have permission to access this content.';
+    $renderedBodyHtml = '<div class="kc-denied-space" style="text-align:center;padding:5rem 2rem;">'
+        . '<div style="font-size:4rem;margin-bottom:1rem;" aria-hidden="true">🔒</div>'
+        . '<h1 style="font-size:2rem;font-weight:700;margin-bottom:0.75rem;">Access Restricted</h1>'
+        . '<p style="color:var(--kc-muted,#64748b);max-width:480px;margin:0 auto 2rem auto;font-size:1.05rem;">' . esc($msg) . '</p>'
+        . '<a href="' . esc($homeUrl) . '" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.5rem;background:var(--kc-primary,#2563eb);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:0.95rem;">← Back to Home</a>'
+        . '</div>';
+} elseif (!empty($document)) {
     if (function_exists('soi_document_html')) {
         $renderedBodyHtml = soi_document_html($document);
     } elseif (class_exists(DocumentRenderer::class)) {

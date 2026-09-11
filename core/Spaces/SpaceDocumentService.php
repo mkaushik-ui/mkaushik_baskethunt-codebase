@@ -62,8 +62,8 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
             $now = date('Y-m-d H:i:s');
             $findStmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `slug` = ? LIMIT 1");
             $insertStmt = $pdo->prepare("INSERT INTO `{$table}` (
-                `title`, `slug`, `type`, `status`, `visibility`, `sortorder`, `description`, `icon`, `created_at`, `updated_at`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                `title`, `slug`, `type`, `status`, `visibility`, `sortorder`, `description`, `icon`, `audience_policy`, `created_at`, `updated_at`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
             foreach ($initialSpaces as $spec) {
                 $findStmt->execute([$spec['slug']]);
@@ -82,6 +82,7 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
                         (int) ($spec['sortorder'] ?? 0),
                         $spec['description'] ?? null,
                         $spec['icon'] ?? null,
+                        $spec['audience_policy'] ?? SpaceSchema::DEFAULT_AUDIENCE_POLICY,
                         $now,
                         $now,
                     ]);
@@ -155,7 +156,7 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
         $affectedSpaceIds = [$generalDocsId];
 
         // 3. Migrate Unassigned Pages (soi_pages)
-        $pagesStmt = $pdo->query("SELECT `id`, `title`, `slug` FROM `soi_pages` WHERE `space_id` IS NULL OR `space_id` = 0");
+        $pagesStmt = $pdo->query("SELECT * FROM `soi_pages` WHERE `space_id` IS NULL OR `space_id` = 0");
         $unassignedPages = $pagesStmt ? $pagesStmt->fetchAll(\PDO::FETCH_ASSOC) : [];
 
         $updatePageStmt = $pdo->prepare("UPDATE `soi_pages` SET 
@@ -559,6 +560,13 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
         ];
     }
 
+    /**
+     * Alias for getDocumentSpace providing rich document context.
+     *
+     * @param string $documentType
+     * @param int $documentId
+     * @return array<string, mixed>|null
+     */
     public function getDocumentSpaceContext(string $documentType, int $documentId): ?array
     {
         return $this->getDocumentSpace($documentType, $documentId);
@@ -572,127 +580,154 @@ class SpaceDocumentService implements SpaceDocumentServiceInterface
      */
     public function getSpaceVersions(int $spaceId): array
     {
+        SpaceSchema::ensure($this->pdo);
+
         if ($spaceId <= 0) {
             return [];
         }
 
         $pdo = $this->getPdo();
         $table = SpaceSchema::TABLE_TECH_VERSIONS;
-
-        try {
-            $stmt = $pdo->prepare("
-                SELECT
-                    `version_tag`,
-                    `version_name`,
-                    `is_latest`,
-                    `is_deprecated`,
-                    `release_date`
-                FROM `{$table}`
-                WHERE `space_id` = ?
-                ORDER BY `release_date` DESC, `id` DESC
-            ");
-            $stmt->execute([$spaceId]);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-        } catch (\Throwable $e) {
-            return [];
-        }
-    }
-
-    // --- Static Public Reader Shell Resolvers (KS-06) ---
-
-    public static function findSpace(string $type, string $slug = '', ?\PDO $pdo = null): ?array
-    {
-        SpaceSchema::ensure($pdo);
-        $activePdo = $pdo ?? (Database::isConnected() ? Database::pdo() : null);
-        if ($activePdo === null) return null;
-
-        $type = SpaceSchema::normalizeType($type);
-        $slug = strtolower(trim($slug));
-        $table = SpaceSchema::TABLE;
-
-        if ($type === 'generaldocs' || $type === 'docs' || $slug === 'docs') {
-            $stmt = $activePdo->prepare("SELECT * FROM `{$table}` WHERE `type` = 'generaldocs' OR `slug` = 'general-docs' OR `slug` = 'docs' ORDER BY `sortorder` ASC, `id` ASC LIMIT 1");
-            $stmt->execute();
-            return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
-        }
-
-        $stmt = $activePdo->prepare("SELECT * FROM `{$table}` WHERE `slug` = ? LIMIT 1");
-        $stmt->execute([$slug]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
-    }
-
-    public static function findSectionBySlug(int $spaceId, string $sectionSlug, ?\PDO $pdo = null): ?array
-    {
-        SpaceSchema::ensure($pdo);
-        $activePdo = $pdo ?? (Database::isConnected() ? Database::pdo() : null);
-        if ($activePdo === null) return null;
-
-        $secTable = SpaceSchema::TABLE_SECTIONS;
-        $stmt = $activePdo->prepare("SELECT * FROM `{$secTable}` WHERE `space_id` = ? AND `slug` = ? LIMIT 1");
-        $stmt->execute([$spaceId, strtolower(trim($sectionSlug))]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
-    }
-
-    public static function findDocumentBySlugAndSpace(string $slug, int $spaceId, ?string $sectionSlug = null, ?\PDO $pdo = null): ?array
-    {
-        SpaceSchema::ensure($pdo);
-        $activePdo = $pdo ?? (Database::isConnected() ? Database::pdo() : null);
-        if ($activePdo === null) return null;
-
-        $slug = strtolower(trim($slug));
-        $stmt = $activePdo->prepare("SELECT * FROM `soi_pages` WHERE `slug` = ? AND `space_id` = ? AND `status` = 'published' LIMIT 1");
-        $stmt->execute([$slug, $spaceId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if ($row) return $row;
-
-        $stmt = $activePdo->prepare("SELECT * FROM `soi_posts` WHERE `slug` = ? AND `space_id` = ? AND `status` = 'published' LIMIT 1");
-        $stmt->execute([$slug, $spaceId]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
-    }
-
-    public static function findLandingDocument(int $spaceId, ?\PDO $pdo = null): ?array
-    {
-        SpaceSchema::ensure($pdo);
-        $activePdo = $pdo ?? (Database::isConnected() ? Database::pdo() : null);
-        if ($activePdo === null) return null;
-
-        $stmt = $activePdo->prepare("SELECT * FROM `soi_pages` WHERE `space_id` = ? AND `status` = 'published' ORDER BY `id` ASC LIMIT 1");
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `space_id` = ? ORDER BY `sort_order` ASC, `created_at` DESC");
         $stmt->execute([$spaceId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if ($row) return $row;
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        $stmt = $activePdo->prepare("SELECT * FROM `soi_posts` WHERE `space_id` = ? AND `status` = 'published' ORDER BY `id` ASC LIMIT 1");
-        $stmt->execute([$spaceId]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+        return is_array($rows) ? $rows : [];
     }
 
-    public static function buildBreadcrumbs(array $space, ?array $section = null, ?array $document = null): array
+    /**
+     * Resolve space by type and slug.
+     */
+    public static function findSpace(string $type, string $slug): ?array
     {
-        $breadcrumbs = [];
-        $spaceSlug = (string)($space['slug'] ?? '');
-        $spaceTitle = (string)($space['title'] ?? ucfirst($spaceSlug));
-        $spaceType = (string)($space['type'] ?? 'generaldocs');
+        $ks = KnowledgeSpaceService::instance();
+        $space = $ks->getSpaceBySlug($slug);
+        if (!$space && ($slug === 'docs' || $slug === 'generaldocs' || $slug === 'general-docs')) {
+            $space = $ks->getSpaceBySlug(SpaceSchema::DEFAULT_SPACE_GENERAL_DOCS);
+        }
+        if (!$space) {
+            return null;
+        }
+        if ($type !== '' && SpaceSchema::normalizeType((string) $space['type']) !== SpaceSchema::normalizeType($type)) {
+            return null;
+        }
+        return $space;
+    }
 
-        $spaceUrl = ($spaceType === 'tech') ? '/tech/' . $spaceSlug : (($spaceType === 'libraries') ? '/library/' . $spaceSlug : '/docs/' . $spaceSlug);
-        $breadcrumbs[] = [
-            'label' => $spaceTitle,
-            'url' => ($document !== null) ? $spaceUrl : null
+    /**
+     * Find section by space ID and section slug.
+     */
+    public static function findSectionBySlug(int $spaceId, string $slug): ?array
+    {
+        if ($spaceId <= 0 || $slug === '') {
+            return null;
+        }
+        $pdo = Database::pdo();
+        $table = SpaceSchema::TABLE_SECTIONS;
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `space_id` = ? AND `slug` = ? LIMIT 1");
+        $stmt->execute([$spaceId, $slug]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Find document by slug, space ID, and optional section slug.
+     */
+    public static function findDocumentBySlugAndSpace(string $docSlug, int $spaceId, ?string $sectionSlug = null): ?array
+    {
+        if ($docSlug === '' || $spaceId <= 0) {
+            return null;
+        }
+        $pdo = Database::pdo();
+
+        // Query pages table
+        $pStmt = $pdo->prepare("SELECT * FROM `soi_pages` WHERE `slug` = ? AND `space_id` = ? LIMIT 1");
+        $pStmt->execute([$docSlug, $spaceId]);
+        $page = $pStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($page) {
+            $page['document_type'] = 'page';
+            return $page;
+        }
+
+        // Query posts table
+        $postStmt = $pdo->prepare("SELECT * FROM `soi_posts` WHERE `slug` = ? AND `space_id` = ? LIMIT 1");
+        $postStmt->execute([$docSlug, $spaceId]);
+        $post = $postStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($post) {
+            $post['document_type'] = 'post';
+            return $post;
+        }
+
+        return null;
+    }
+
+    /**
+     * Find default/landing document for a space.
+     */
+    public static function findLandingDocument(int $spaceId): ?array
+    {
+        if ($spaceId <= 0) {
+            return null;
+        }
+        $pdo = Database::pdo();
+
+        $pStmt = $pdo->prepare("SELECT * FROM `soi_pages` WHERE `space_id` = ? AND `status` = 'published' ORDER BY `id` ASC LIMIT 1");
+        $pStmt->execute([$spaceId]);
+        $page = $pStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($page) {
+            $page['document_type'] = 'page';
+            return $page;
+        }
+
+        $postStmt = $pdo->prepare("SELECT * FROM `soi_posts` WHERE `space_id` = ? AND `status` = 'published' ORDER BY `id` ASC LIMIT 1");
+        $postStmt->execute([$spaceId]);
+        $post = $postStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($post) {
+            $post['document_type'] = 'post';
+            return $post;
+        }
+
+        return null;
+    }
+
+    /**
+     * Build breadcrumbs trail for reader shell.
+     *
+     * @param array<string, mixed> $space
+     * @param array<string, mixed>|null $section
+     * @param array<string, mixed>|null $document
+     * @return list<array{label: string, url: string|null}>
+     */
+    public static function buildBreadcrumbs(array $space, ?array $section, ?array $document): array
+    {
+        $crumbs = [];
+        $crumbs[] = [
+            'label' => 'Home',
+            'url'   => '/',
         ];
 
-        if ($section !== null && !empty($section['title'])) {
-            $breadcrumbs[] = [
-                'label' => (string)$section['title'],
-                'url' => null
+        $spaceType = (string) ($space['type'] ?? 'generaldocs');
+        $spaceSlug = (string) ($space['slug'] ?? '');
+        $crumbs[] = [
+            'label' => (string) ($space['title'] ?? 'Space'),
+            'url'   => "/{$spaceType}/{$spaceSlug}",
+        ];
+
+        if ($section) {
+            $secSlug = (string) ($section['slug'] ?? '');
+            $crumbs[] = [
+                'label' => (string) ($section['title'] ?? 'Section'),
+                'url'   => "/{$spaceType}/{$spaceSlug}/{$secSlug}",
             ];
         }
 
-        if ($document !== null && !empty($document['title'])) {
-            $breadcrumbs[] = [
-                'label' => (string)$document['title'],
-                'url' => null
+        if ($document) {
+            $crumbs[] = [
+                'label' => (string) ($document['title'] ?? 'Document'),
+                'url'   => null,
             ];
         }
 
-        return $breadcrumbs;
+        return $crumbs;
     }
 }

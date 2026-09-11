@@ -4,9 +4,15 @@
  * Version: 1.0.7 (Enterprise authoring workspace)
  */
 
-define('SOI_ROOT', __DIR__);
-define('SOI_VERSION', '1.0.7');
-define('SOI_START', microtime(true));
+if (!defined('SOI_ROOT')) {
+    define('SOI_ROOT', __DIR__);
+}
+if (!defined('SOI_VERSION')) {
+    define('SOI_VERSION', '1.0.7');
+}
+if (!defined('SOI_START')) {
+    define('SOI_START', microtime(true));
+}
 
 // Check if installed
 if (!file_exists(SOI_ROOT . '/config/config.php')) {

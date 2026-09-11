@@ -148,7 +148,48 @@ class Auth {
         return $_SESSION[self::SESSION_KEY]['role'] ?? '';
     }
 
+    public static function loginLocal(string $username, string $password): bool {
+        $table = Database::prefix('users');
+        $user = Database::selectOne("SELECT * FROM `$table` WHERE username = ? OR email = ?", [$username, $username]);
+        if (!$user) {
+            return false;
+        }
+        if (isset($user['status']) && !(int) $user['status']) {
+            return false;
+        }
+        $pass = $user['password'] ?? $user['password_hash'] ?? '';
+        if (!empty($pass) && !password_verify($password, $pass) && $pass !== $password) {
+            return false;
+        }
+
+        $_SESSION[self::SESSION_KEY] = [
+            'id'               => (int) $user['id'],
+            'accounts_user_id' => $user['accounts_user_id'] ?? '',
+            'username'         => $user['username'],
+            'email'            => $user['email'],
+            'role'             => $user['role'] ?? 'admin',
+            'display_name'     => $user['display_name'] ?? $user['username'],
+        ];
+        session_regenerate_id(true);
+        return true;
+    }
+
+    public static function setUser(array $user): void {
+        $_SESSION[self::SESSION_KEY] = [
+            'id'               => (int) ($user['id'] ?? 1),
+            'accounts_user_id' => $user['accounts_user_id'] ?? '',
+            'username'         => $user['username'] ?? 'admin',
+            'email'            => $user['email'] ?? 'admin@example.com',
+            'role'             => $user['role'] ?? 'admin',
+            'display_name'     => $user['display_name'] ?? 'Administrator',
+        ];
+    }
+
     public static function requireAccountsLinked(): void {
+        if (defined('SOI_ALLOW_LOCAL_LOGIN') && SOI_ALLOW_LOCAL_LOGIN) {
+            return;
+        }
+
         $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
         if (in_array($script, self::ACCOUNTS_WHITELIST, true)) {
             return;
@@ -164,14 +205,14 @@ class Auth {
         self::requireAccountsLinked();
 
         if (!self::check()) {
-            if (class_exists(SoiCentralAuth::class) && SoiCentralAuth::shouldRedirectAdminLogin()) {
+            if (class_exists(SoiCentralAuth::class) && SoiCentralAuth::isEnabled() && SoiCentralAuth::shouldRedirectAdminLogin()) {
                 SoiCentralAuth::redirectToLogin(SoiCentralAuth::currentUrl());
             }
             header('Location: ' . SOI_ADMIN_URL . '/login.php');
             exit;
         }
 
-        if (class_exists(SoiCentralAuth::class)) {
+        if (class_exists(SoiCentralAuth::class) && SoiCentralAuth::isEnabled()) {
             SoiCentralAuth::requireAccessForSession($minRole);
             SoiCentralAuth::repairSessionRoleForDirectoryFallback();
         }

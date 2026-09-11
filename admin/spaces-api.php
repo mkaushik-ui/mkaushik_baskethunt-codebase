@@ -116,22 +116,58 @@ try {
             }
         }
 
-        if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
-            Auth::requireAuth('editor');
+        $editId = (int) ($_POST['id'] ?? 0);
+        $subject = \SOI\Core\Spaces\Audience\AudienceSubjectContext::fromCurrentSession();
+        $policyService = new \SOI\Core\Spaces\Audience\AudiencePolicyService();
+
+        if ($editId > 0) {
+            $existingSpace = $service->getSpace($editId);
+            if (!$existingSpace || (!$policyService->canManageSpace($existingSpace, $subject) && !$subject->isEditor())) {
+                if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
+                    Auth::requireAuth('editor');
+                }
+            }
+        } else {
+            if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
+                Auth::requireAuth('editor');
+            }
         }
 
-        $editId = (int) ($_POST['id'] ?? 0);
+        $visibility = (string) ($_POST['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC);
         $data = [
             'title'       => trim((string) ($_POST['title'] ?? '')),
             'slug'        => trim((string) ($_POST['slug'] ?? '')),
             'type'        => (string) ($_POST['type'] ?? SpaceSchema::TYPE_GENERALDOCS),
             'icon'        => trim((string) ($_POST['icon'] ?? '')),
             'description' => trim((string) ($_POST['description'] ?? '')),
-            'visibility'  => (string) ($_POST['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC),
+            'visibility'  => $visibility,
             'status'      => (string) ($_POST['status'] ?? SpaceSchema::STATUS_PUBLISHED),
             'sort_order'  => (int) ($_POST['sort_order'] ?? $_POST['sortorder'] ?? 0),
             'sortorder'   => (int) ($_POST['sort_order'] ?? $_POST['sortorder'] ?? 0),
         ];
+
+        // Process Audience Policy (WD-05)
+        $rawPolicy = $_POST['audience_policy'] ?? null;
+        if (is_array($rawPolicy)) {
+            $splitCsv = static function ($val): array {
+                if (empty($val)) return [];
+                $items = is_array($val) ? $val : explode(',', (string) $val);
+                return array_values(array_unique(array_filter(array_map('trim', $items))));
+            };
+
+            $policyData = [
+                'visibility'    => $visibility,
+                'mode'          => (string) ($rawPolicy['mode'] ?? 'any'),
+                'departments'   => $splitCsv($rawPolicy['departments'] ?? ''),
+                'teams'         => $splitCsv($rawPolicy['teams'] ?? ''),
+                'groups'        => $splitCsv($rawPolicy['groups'] ?? ''),
+                'allowed_users' => $splitCsv($rawPolicy['allowed_users'] ?? ''),
+                'space_owners'  => $splitCsv($rawPolicy['space_owners'] ?? ''),
+            ];
+            $data['audience_policy'] = json_encode($policyData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } elseif (is_string($rawPolicy) && trim($rawPolicy) !== '') {
+            $data['audience_policy'] = $rawPolicy;
+        }
 
         if ($editId > 0) {
             $service->updateSpace($editId, $data);

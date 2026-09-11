@@ -227,7 +227,7 @@ class ReusableManager
      * @param bool $preview Whether in preview mode
      * @return string Rendered HTML content or fallback markup
      */
-    public static function resolveLiveContent(int $id, bool $preview = false): string
+    public static function resolveLiveContent(int $id, bool $preview = false, ?\SOI\Core\Spaces\Audience\AudienceSubjectContext $subject = null): string
     {
         if ($id <= 0) {
             return '<div class="kc-reusable-empty">[Empty reusable block reference]</div>';
@@ -244,6 +244,15 @@ class ReusableManager
             $block = self::get($id);
             if (!$block || empty($block['content_json'])) {
                 return '<div class="kc-reusable-missing">[Reusable block #' . $id . ' not found]</div>';
+            }
+
+            // Audience / Permission guard (WD-06)
+            if (!empty($block['audience_policy'])) {
+                $subject = $subject ?? \SOI\Core\Spaces\Audience\AudienceSubjectContext::fromCurrentSession();
+                $policyService = \SOI\Core\Spaces\Audience\AudiencePolicyService::instance();
+                if (!$policyService->canAccessSpace($block, $subject)) {
+                    return '<div class="kc-reusable-restricted">[Restricted reusable content - Access Denied]</div>';
+                }
             }
 
             if (class_exists(Document::class) && class_exists(DocumentRenderer::class)) {

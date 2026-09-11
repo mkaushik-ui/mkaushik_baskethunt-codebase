@@ -11,13 +11,14 @@ use SOI\Core\Content\Document;
 class ReusableBlockService
 {
     /**
-     * Resolve reusable block reference while guarding against circular loops.
+     * Resolve reusable block reference while guarding against circular loops and permission checks.
      *
      * @param int $reusableId
      * @param list<int> $callStack Stack of active reusable IDs in current render pass
+     * @param \SOI\Core\Spaces\Audience\AudienceSubjectContext|null $subject
      * @return array<string, mixed>
      */
-    public function resolve(int $reusableId, array &$callStack = []): array
+    public function resolve(int $reusableId, array &$callStack = [], ?\SOI\Core\Spaces\Audience\AudienceSubjectContext $subject = null): array
     {
         if (in_array($reusableId, $callStack, true)) {
             // Circular loop detected! Terminate safely
@@ -32,7 +33,28 @@ class ReusableBlockService
         }
 
         $callStack[] = $reusableId;
-        // Developer 7: Fetch reusable payload from database and return
+
+        if (class_exists(\SOI\Core\Reusable\ReusableManager::class)) {
+            $block = \SOI\Core\Reusable\ReusableManager::get($reusableId);
+            if ($block && !empty($block['audience_policy'])) {
+                $subject = $subject ?? \SOI\Core\Spaces\Audience\AudienceSubjectContext::fromCurrentSession();
+                $policyService = \SOI\Core\Spaces\Audience\AudiencePolicyService::instance();
+                if (!$policyService->canAccessSpace($block, $subject)) {
+                    return [
+                        'type' => 'callout',
+                        'data' => [
+                            'tone' => 'warning',
+                            'title' => 'Access Restricted',
+                            'text' => 'You do not have permission to view this reusable block content.',
+                        ],
+                    ];
+                }
+            }
+            if ($block && isset($block['content']) && is_array($block['content'])) {
+                return $block['content'];
+            }
+        }
+
         return Document::empty();
     }
 }

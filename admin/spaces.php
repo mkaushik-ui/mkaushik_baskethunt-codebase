@@ -68,22 +68,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Action: Save Space (Create / Update) - supports 'save_space' and 'savespace'
     if ($postAction === 'save_space' || $postAction === 'savespace') {
-        if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
-            Auth::requireAuth('editor');
+        $editId = (int) ($_POST['id'] ?? 0);
+        $subject = \SOI\Core\Spaces\Audience\AudienceSubjectContext::fromCurrentSession();
+        $policyService = new \SOI\Core\Spaces\Audience\AudiencePolicyService();
+
+        // Allow space owners to manage their spaces, otherwise require editor role
+        if ($editId > 0) {
+            $existingSpace = $service->getSpace($editId);
+            if (!$existingSpace || (!$policyService->canManageSpace($existingSpace, $subject) && !$subject->isEditor())) {
+                if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
+                    Auth::requireAuth('editor');
+                }
+            }
+        } else {
+            if (class_exists(Auth::class) && method_exists(Auth::class, 'requireAuth')) {
+                Auth::requireAuth('editor');
+            }
         }
 
-        $editId = (int) ($_POST['id'] ?? 0);
+        $visibility = (string) ($_POST['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC);
         $data = [
             'title'       => trim((string) ($_POST['title'] ?? '')),
             'slug'        => trim((string) ($_POST['slug'] ?? '')),
             'type'        => (string) ($_POST['type'] ?? SpaceSchema::TYPE_GENERALDOCS),
             'icon'        => trim((string) ($_POST['icon'] ?? '')),
             'description' => trim((string) ($_POST['description'] ?? '')),
-            'visibility'  => (string) ($_POST['visibility'] ?? SpaceSchema::VISIBILITY_PUBLIC),
+            'visibility'  => $visibility,
             'status'      => (string) ($_POST['status'] ?? SpaceSchema::STATUS_PUBLISHED),
             'sort_order'  => (int) ($_POST['sort_order'] ?? $_POST['sortorder'] ?? 0),
             'sortorder'   => (int) ($_POST['sort_order'] ?? $_POST['sortorder'] ?? 0),
         ];
+
+        // Process Audience Policy (WD-05)
+        $rawPolicy = $_POST['audience_policy'] ?? null;
+        if (is_array($rawPolicy)) {
+            $splitCsv = static function ($val): array {
+                if (empty($val)) return [];
+                $items = is_array($val) ? $val : explode(',', (string) $val);
+                return array_values(array_unique(array_filter(array_map('trim', $items))));
+            };
+
+            $policyData = [
+                'visibility'    => $visibility,
+                'mode'          => (string) ($rawPolicy['mode'] ?? 'any'),
+                'departments'   => $splitCsv($rawPolicy['departments'] ?? ''),
+                'teams'         => $splitCsv($rawPolicy['teams'] ?? ''),
+                'groups'        => $splitCsv($rawPolicy['groups'] ?? ''),
+                'allowed_users' => $splitCsv($rawPolicy['allowed_users'] ?? ''),
+                'space_owners'  => $splitCsv($rawPolicy['space_owners'] ?? ''),
+            ];
+            $data['audience_policy'] = json_encode($policyData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } elseif (is_string($rawPolicy) && trim($rawPolicy) !== '') {
+            $data['audience_policy'] = $rawPolicy;
+        }
 
         try {
             if ($editId > 0) {
@@ -655,11 +692,21 @@ if ($hasHeader) {
           </td>
           <td>
             <?php if ($s['visibility'] === 'public'): ?>
-              <span style="font-size:0.8rem;color:var(--soi-success,#22c55e);">🌐 Public</span>
+              <span style="font-size:0.8rem;color:var(--soi-success,#22c55e);font-weight:600;">🌐 Public</span>
             <?php elseif ($s['visibility'] === 'authenticated'): ?>
-              <span style="font-size:0.8rem;color:var(--soi-warning,#eab308);">🔑 Authenticated</span>
-            <?php else: ?>
-              <span style="font-size:0.8rem;color:var(--soi-danger,#ef4444);">🛡️ Restricted</span>
+              <span style="font-size:0.8rem;color:var(--soi-warning,#eab308);font-weight:600;">🔑 Authenticated</span>
+            <?php else: 
+              $pol = is_array($s['audience_policy_parsed'] ?? null) ? $s['audience_policy_parsed'] : (is_string($s['audience_policy'] ?? null) ? json_decode((string)$s['audience_policy'], true) : []);
+              $depts = !empty($pol['departments']) ? implode(', ', (array)$pol['departments']) : '';
+              $owners = !empty($pol['space_owners']) ? implode(', ', (array)$pol['space_owners']) : '';
+            ?>
+              <span style="font-size:0.8rem;color:var(--soi-danger,#ef4444);font-weight:600;">🛡️ Restricted</span>
+              <?php if ($depts !== ''): ?>
+                <div style="font-size:0.7rem;color:var(--soi-text-muted,#94a3b8);margin-top:2px;">Depts: <?= esc($depts) ?></div>
+              <?php endif; ?>
+              <?php if ($owners !== ''): ?>
+                <div style="font-size:0.7rem;color:var(--soi-primary,#38bdf8);margin-top:1px;">Owner: <?= esc($owners) ?></div>
+              <?php endif; ?>
             <?php endif; ?>
           </td>
           <td>
@@ -833,6 +880,48 @@ if ($hasHeader) {
           </div>
         </div>
 
+        <!-- Audience Policy Settings Panel (Task WD-05) -->
+        <div id="kc-audience-policy-panel" style="background:var(--soi-surface-secondary,#24334a);border:1px solid var(--soi-border,#334155);border-radius:var(--soi-radius-md,8px);padding:0.85rem;margin-bottom:1rem;display:none;">
+          <div style="font-size:0.85rem;font-weight:700;color:var(--soi-primary,#38bdf8);margin-bottom:0.6rem;display:flex;align-items:center;gap:0.4rem;">
+            🛡️ Granular Audience Policy & Permissions
+          </div>
+
+          <div class="kc-form-group" style="margin-bottom:0.6rem;">
+            <label class="kc-form-label" for="space-modal-departments" style="font-size:0.75rem;">Allowed Departments (comma-separated)</label>
+            <input type="text" id="space-modal-departments" name="audience_policy[departments]" class="kc-form-control" placeholder="e.g. HR, IT, Finance, Operations" style="font-size:0.82rem;">
+          </div>
+
+          <div class="kc-form-group" style="margin-bottom:0.6rem;">
+            <label class="kc-form-label" for="space-modal-teams" style="font-size:0.75rem;">Allowed Teams (comma-separated)</label>
+            <input type="text" id="space-modal-teams" name="audience_policy[teams]" class="kc-form-control" placeholder="e.g. Recruitment, Core Infrastructure, People Ops" style="font-size:0.82rem;">
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem;">
+            <div class="kc-form-group" style="margin-bottom:0;">
+              <label class="kc-form-label" for="space-modal-groups" style="font-size:0.75rem;">Allowed Groups / Roles</label>
+              <input type="text" id="space-modal-groups" name="audience_policy[groups]" class="kc-form-control" placeholder="e.g. hr-managers, tech-leads" style="font-size:0.82rem;">
+            </div>
+            <div class="kc-form-group" style="margin-bottom:0;">
+              <label class="kc-form-label" for="space-modal-mode" style="font-size:0.75rem;">Matching Rule</label>
+              <select id="space-modal-mode" name="audience_policy[mode]" class="kc-form-control" style="font-size:0.82rem;">
+                <option value="any">Match ANY rule (OR)</option>
+                <option value="all">Match ALL criteria (AND)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
+            <div class="kc-form-group" style="margin-bottom:0;">
+              <label class="kc-form-label" for="space-modal-owners" style="font-size:0.75rem;">Delegated Space Owners (IDs/Emails)</label>
+              <input type="text" id="space-modal-owners" name="audience_policy[space_owners]" class="kc-form-control" placeholder="e.g. 42, 108" style="font-size:0.82rem;">
+            </div>
+            <div class="kc-form-group" style="margin-bottom:0;">
+              <label class="kc-form-label" for="space-modal-users" style="font-size:0.75rem;">Allowed Users (IDs/Emails)</label>
+              <input type="text" id="space-modal-users" name="audience_policy[allowed_users]" class="kc-form-control" placeholder="e.g. 204, bob@soi.co.in" style="font-size:0.82rem;">
+            </div>
+          </div>
+        </div>
+
         <!-- Status & Sort Order in 2 Columns -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
           <div class="kc-form-group">
@@ -881,6 +970,14 @@ if ($hasHeader) {
   const openCreateBtn = document.getElementById('kc-open-create-modal');
   const closeBtn = document.getElementById('kc-modal-close-btn');
   const cancelBtn = document.getElementById('kc-modal-cancel-btn');
+
+  const policyPanel = document.getElementById('kc-audience-policy-panel');
+  const deptInput = document.getElementById('space-modal-departments');
+  const teamInput = document.getElementById('space-modal-teams');
+  const groupInput = document.getElementById('space-modal-groups');
+  const modeSelect = document.getElementById('space-modal-mode');
+  const ownersInput = document.getElementById('space-modal-owners');
+  const usersInput = document.getElementById('space-modal-users');
 
   let isManualSlug = false;
   let slugCheckTimeout = null;
@@ -932,6 +1029,10 @@ if ($hasHeader) {
       card.classList.toggle('is-selected', selected);
       if (radio) radio.checked = selected;
     });
+
+    if (policyPanel) {
+      policyPanel.style.display = (visValue === 'restricted') ? 'block' : 'none';
+    }
   }
 
   document.querySelectorAll('.kc-vis-card').forEach(function(card) {
@@ -985,6 +1086,18 @@ if ($hasHeader) {
       if (statusSelect) statusSelect.value = data.status || 'published';
       if (sortInput) sortInput.value = data.sortorder !== undefined ? data.sortorder : (data.sort_order || 0);
       setVisibilityCard(data.visibility || 'public');
+
+      // Populate Audience Policy Fields
+      let pol = data.audience_policy_parsed || {};
+      if (!pol || typeof pol !== 'object' || Array.isArray(pol)) {
+        try { pol = JSON.parse(data.audience_policy || '{}'); } catch(e) { pol = {}; }
+      }
+      if (deptInput) deptInput.value = Array.isArray(pol.departments) ? pol.departments.join(', ') : (pol.departments || '');
+      if (teamInput) teamInput.value = Array.isArray(pol.teams) ? pol.teams.join(', ') : (pol.teams || '');
+      if (groupInput) groupInput.value = Array.isArray(pol.groups) ? pol.groups.join(', ') : (pol.groups || '');
+      if (modeSelect) modeSelect.value = pol.mode || 'any';
+      if (ownersInput) ownersInput.value = Array.isArray(pol.space_owners) ? pol.space_owners.join(', ') : (pol.space_owners || '');
+      if (usersInput) usersInput.value = Array.isArray(pol.allowed_users) ? pol.allowed_users.join(', ') : (pol.allowed_users || '');
     } else {
       if (modalHeading) modalHeading.textContent = 'Create Knowledge Space';
       if (idInput) idInput.value = 0;
@@ -992,6 +1105,12 @@ if ($hasHeader) {
       if (statusSelect) statusSelect.value = 'published';
       if (sortInput) sortInput.value = 0;
       setVisibilityCard('public');
+      if (deptInput) deptInput.value = '';
+      if (teamInput) teamInput.value = '';
+      if (groupInput) groupInput.value = '';
+      if (modeSelect) modeSelect.value = 'any';
+      if (ownersInput) ownersInput.value = '';
+      if (usersInput) usersInput.value = '';
     }
 
     updateUrlPreview();

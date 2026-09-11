@@ -71,6 +71,14 @@ class Cache
     }
 
     /**
+     * Purge a key or tag from cache.
+     */
+    public static function purge(string $key): bool
+    {
+        return self::delete($key);
+    }
+
+    /**
      * Flush all key-value entries from cache.
      */
     public static function flush(): void
