@@ -431,6 +431,17 @@ final class SpaceSchema
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         }
 
+        // Ensure space context & audience policy columns on soi_pages & soi_posts
+        self::ensureColumnExists($activePdo, 'soi_pages', 'space_id', 'int(11) NOT NULL DEFAULT 0', $driver);
+        self::ensureColumnExists($activePdo, 'soi_pages', 'section_id', 'int(11) NOT NULL DEFAULT 0', $driver);
+        self::ensureColumnExists($activePdo, 'soi_pages', 'doc_version', "varchar(32) NOT NULL DEFAULT 'v1.0'", $driver);
+        self::ensureColumnExists($activePdo, 'soi_pages', 'audience_policy', 'longtext DEFAULT NULL', $driver);
+
+        self::ensureColumnExists($activePdo, 'soi_posts', 'space_id', 'int(11) NOT NULL DEFAULT 0', $driver);
+        self::ensureColumnExists($activePdo, 'soi_posts', 'section_id', 'int(11) NOT NULL DEFAULT 0', $driver);
+        self::ensureColumnExists($activePdo, 'soi_posts', 'doc_version', "varchar(32) NOT NULL DEFAULT 'v1.0'", $driver);
+        self::ensureColumnExists($activePdo, 'soi_posts', 'audience_policy', 'longtext DEFAULT NULL', $driver);
+
         if ($pdo === null) {
             self::$ensured = true;
         }

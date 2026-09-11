@@ -32,10 +32,18 @@ final class EditorSchema
             self::ensureColumn($table, 'editor_format', "varchar(20) NOT NULL DEFAULT 'legacy'");
             self::ensureColumn($table, 'schema_version', 'smallint UNSIGNED NOT NULL DEFAULT 0');
             self::ensureColumn($table, 'revision_count', 'int UNSIGNED NOT NULL DEFAULT 1');
+            self::ensureColumn($table, 'space_id', 'int(11) NOT NULL DEFAULT 0');
+            self::ensureColumn($table, 'section_id', 'int(11) NOT NULL DEFAULT 0');
+            self::ensureColumn($table, 'doc_version', "varchar(32) NOT NULL DEFAULT 'v1.0'");
+            self::ensureColumn($table, 'audience_policy', 'longtext NULL');
         }
 
         self::ensureRevisionsTable();
         self::ensureReusableBlocksTable();
+
+        if (class_exists(\SOI\Core\Spaces\SpaceSchema::class)) {
+            \SOI\Core\Spaces\SpaceSchema::ensure();
+        }
     }
 
     public static function isStructured(array $record): bool
